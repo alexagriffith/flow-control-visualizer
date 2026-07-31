@@ -34,6 +34,8 @@ function QueueDots({ queue }: { queue: QueueFrame }) {
 
 function PriorityBand({ priority, queues, run }: { priority: number; queues: QueueFrame[]; run: RunData }) {
   const queued = queues.reduce((total, queue) => total + queue.size, 0)
+  const activeQueues = queues.filter((queue) => queue.size > 0)
+  const emptyQueueCount = queues.length - activeQueues.length
   return (
     <section className={`priority-band ${priorityClass(priority)}`} aria-label={`${priorityName(priority)} priority ${priority}`}>
       <header>
@@ -44,7 +46,7 @@ function PriorityBand({ priority, queues, run }: { priority: number; queues: Que
         <b>{formatCount(queued)} queued</b>
       </header>
       <div className="fairness-queues">
-        {queues.length > 0 ? queues.map((queue) => {
+        {activeQueues.map((queue) => {
           const tenant = run.tenants.find((candidate) => candidate.id === queue.id)
           return (
             <div
@@ -58,13 +60,15 @@ function PriorityBand({ priority, queues, run }: { priority: number; queues: Que
               <small>{formatCount(queue.size)} queued</small>
             </div>
           )
-        }) : (
-          <div className="fairness-queue queue-absent">
-            <span>No flow</span>
-            <div className="diagram-queue-dots"><em>empty</em></div>
-            <small>0 queued</small>
+        })}
+        {activeQueues.length === 0 ? (
+          <div className="queue-empty-summary">
+            <strong>{queues.length > 0 ? 'No queued requests' : 'No flows recorded'}</strong>
+            {queues.length > 0 ? <span>{formatCount(queues.length)} empty {queues.length === 1 ? 'queue' : 'queues'}</span> : null}
           </div>
-        )}
+        ) : emptyQueueCount > 0 ? (
+          <span className="empty-queue-count">+{formatCount(emptyQueueCount)} empty</span>
+        ) : null}
       </div>
       <div className="band-dispatch" aria-hidden="true"><i /><span>eligible</span></div>
     </section>
@@ -183,8 +187,11 @@ export function SystemFlowDiagram({ run, frame }: SystemFlowDiagramProps) {
           <div className="policy-boundary"><span>llm-d priority ends here</span></div>
 
           <div className="runtime-pipeline">
-            <section className="runtime-waiting-queue" aria-label={`${pod?.waiting ?? 0} requests waiting in the vLLM pod`}>
-              <header><span>Local queue</span><strong>{formatCount(pod?.waiting ?? 0)}</strong></header>
+            <section className="runtime-waiting-queue" aria-label={`${pod?.waiting ?? 0} requests reported by vLLM as waiting`}>
+              <header>
+                <span title="vllm:num_requests_waiting">vLLM waiting</span>
+                <strong>{formatCount(pod?.waiting ?? 0)}</strong>
+              </header>
               <div className="runtime-queue-track" aria-hidden="true">
                 {Array.from({ length: Math.min(14, pod?.waiting ?? 0) }, (_, index) => <i key={index} />)}
                 {(pod?.waiting ?? 0) === 0 ? <em>empty</em> : null}
@@ -201,10 +208,10 @@ export function SystemFlowDiagram({ run, frame }: SystemFlowDiagramProps) {
             <section className="continuous-batch" aria-labelledby="batch-title">
               <header>
                 <div>
-                  <span>Recorded</span>
-                  <h4 id="batch-title">Active requests</h4>
+                  <span title="vllm:num_requests_running">Continuous scheduler</span>
+                  <h4 id="batch-title">Continuous batch</h4>
                 </div>
-                <strong>{formatCount(running)}{maxSequences ? ` / ${formatCount(maxSequences)}` : ''}</strong>
+                <strong>{formatCount(running)} active{maxSequences ? ` / ${formatCount(maxSequences)}` : ''}</strong>
               </header>
 
               {sequencePercent === null ? (

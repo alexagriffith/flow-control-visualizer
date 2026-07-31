@@ -234,11 +234,6 @@ export default function App() {
           </div>
         )}
 
-        <section className="source-strip" aria-label="Replay data boundary">
-          <span><i /> {run.evidence.metricResolution} samples</span>
-          <span>Exact: rates, queues, running, waiting, KV, preemptions</span>
-          <span>Not captured: engine-step membership</span>
-        </section>
       </main>
     </div>
   )
