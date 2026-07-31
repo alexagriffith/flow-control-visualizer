@@ -2367,3 +2367,86 @@ main {
     display: none;
   }
 }
+
+/* Live numbers reserve their largest practical footprint so telemetry updates
+   never reflow the playback controls or the request-path header. */
+.play-button {
+  min-width: 88px;
+  justify-content: center;
+}
+
+.time-readout strong {
+  display: inline-block;
+  min-width: 7ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-legend .request-rate-now {
+  flex: 0 0 72px;
+}
+
+.request-rate-now strong {
+  display: inline-block;
+  min-width: 5.5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.system-diagram-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.diagram-live-readout {
+  display: grid;
+  grid-template-columns: 96px 112px 120px;
+  gap: 12px;
+  justify-items: end;
+}
+
+.diagram-live-readout span {
+  width: 100%;
+  text-align: right;
+}
+
+.diagram-live-readout strong {
+  display: inline-block;
+  min-width: 4.5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 980px) {
+  .system-diagram-header {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .diagram-live-readout {
+    margin-top: 10px;
+  }
+}
+
+@media (max-width: 700px) {
+  .diagram-live-readout {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .diagram-live-readout span {
+    text-align: left;
+  }
+}
+
+/* Recording mode always uses the wide component diagram, regardless of the
+   host browser's viewport width. */
+.recording-mode .system-diagram-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.recording-mode .diagram-live-readout {
+  margin-top: 0;
+}
