@@ -249,7 +249,7 @@ export default function App() {
         </div>
 
         {viewMode === 'diagram' ? (
-          <SystemFlowDiagram run={run} frame={frame} />
+          <SystemFlowDiagram run={run} frame={frame} playing={playing} />
         ) : (
           <div className="flow-stack">
             <ClientLayer run={run} frame={frame} frameIndex={frameIndex} />

@@ -8,10 +8,15 @@ import type {
   RunData,
   TenantDefinition,
   TenantFrame,
+  VllmFrame,
 } from '../src/types'
 
 const QUEUE_SIZE_PREFIX = 'inference_extension_flow_control_queue_size|'
 const QUEUE_BYTES_PREFIX = 'inference_extension_flow_control_queue_bytes|'
+const VLLM_RUNNING_PREFIX = 'vllm:num_requests_running|'
+const VLLM_WAITING_PREFIX = 'vllm:num_requests_waiting|'
+const VLLM_CACHE_PREFIX = 'vllm:gpu_cache_usage_perc|'
+const VLLM_PREEMPTIONS_PREFIX = 'vllm:num_preemptions_total|'
 const COLORS = ['#2d5bff', '#168f82', '#d95b30', '#6941c6', '#b7791f', '#0077a8']
 
 export type IngestOptions = {
@@ -170,6 +175,42 @@ function queuesFor(
   })
 }
 
+function labelsFromSuffix(suffix: string): Record<string, string> {
+  return Object.fromEntries(
+    suffix.split('|').filter((part) => part.includes('=')).map((part) => {
+      const separator = part.indexOf('=')
+      return [part.slice(0, separator), part.slice(separator + 1)]
+    }),
+  )
+}
+
+export function vllmFor(row: CsvRow, runningKeys: string[]): VllmFrame[] {
+  if (runningKeys.length === 0) {
+    return [{
+      pod: 'vllm-aggregate',
+      running: numeric(row, 'vllm:num_requests_running'),
+      waiting: numeric(row, 'vllm:num_requests_waiting'),
+      kvCacheUsage: numeric(row, 'vllm:kv_cache_usage_perc') || numeric(row, 'vllm:gpu_cache_usage_perc'),
+      preemptions: numeric(row, 'vllm:num_preemptions') || numeric(row, 'vllm:num_preemptions_total'),
+      aggregated: true,
+    }]
+  }
+
+  return runningKeys.map((runningKey, index) => {
+    const suffix = runningKey.slice(VLLM_RUNNING_PREFIX.length)
+    const labels = labelsFromSuffix(suffix)
+    const pod = labels.pod ?? labels.instance ?? labels.engine ?? labels.model_name ?? `vllm-${index + 1}`
+    return {
+      pod,
+      running: numeric(row, runningKey),
+      waiting: numeric(row, `${VLLM_WAITING_PREFIX}${suffix}`),
+      kvCacheUsage: numeric(row, `${VLLM_CACHE_PREFIX}${suffix}`),
+      preemptions: numeric(row, `${VLLM_PREEMPTIONS_PREFIX}${suffix}`),
+      aggregated: false,
+    }
+  })
+}
+
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {}
 }
@@ -244,6 +285,8 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
 
   const queueKeys = Object.keys(metricRows[0])
     .filter((key) => key.startsWith(QUEUE_SIZE_PREFIX))
+  const vllmRunningKeys = Object.keys(metricRows[0])
+    .filter((key) => key.startsWith(VLLM_RUNNING_PREFIX))
   const frameTimes = metricRows.map((row) => numeric(row, 'elapsed_s'))
   const counts = eventCounts(requests, frameTimes)
 
@@ -254,16 +297,7 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
     completions: counts[index][1],
     tenants: nearestTenantFrames(samplesByTenant, tenants, frameTimes[index]),
     queues: queuesFor(row, queueKeys, tenantById),
-    vllm: [
-      {
-        pod: 'vllm-aggregate',
-        running: numeric(row, 'vllm:num_requests_running'),
-        waiting: numeric(row, 'vllm:num_requests_waiting'),
-        kvCacheUsage: numeric(row, 'vllm:kv_cache_usage_perc') || numeric(row, 'vllm:gpu_cache_usage_perc'),
-        preemptions: numeric(row, 'vllm:num_preemptions') || numeric(row, 'vllm:num_preemptions_total'),
-        aggregated: true,
-      },
-    ],
+    vllm: vllmFor(row, vllmRunningKeys),
   }))
 
   const runId = String(summary.run_id ?? metricRows[0].run_id ?? basename(args.runDir))
@@ -303,8 +337,8 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
       requestCount: requests.length,
       errorCount: requests.filter((request) => request.status >= 400 || request.status === 0).length,
       maxEppQueue: Math.max(0, ...frames.flatMap((frame) => frame.queues.map((queue) => queue.size))),
-      maxVllmWaiting: Math.max(0, ...frames.flatMap((frame) => frame.vllm.map((pod) => pod.waiting))),
-      maxVllmRunning: Math.max(0, ...frames.flatMap((frame) => frame.vllm.map((pod) => pod.running))),
+      maxVllmWaiting: Math.max(0, ...frames.map((frame) => frame.vllm.reduce((total, pod) => total + pod.waiting, 0))),
+      maxVllmRunning: Math.max(0, ...frames.map((frame) => frame.vllm.reduce((total, pod) => total + pod.running, 0))),
       maxSaturation: Math.max(0, ...frames.map((frame) => frame.saturation)),
     },
     evidence: {
@@ -316,7 +350,9 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
           ? 'Client request IDs and token event timing are available; engine-step membership is not.'
           : 'Client and server metrics share elapsed run time but do not carry a common request ID.',
         'Queue transitions shorter than the sampling interval may not appear.',
-        'vLLM metrics are aggregate because the source CSV does not preserve pod labels.',
+        vllmRunningKeys.length > 0
+          ? 'vLLM series labels are preserved so each recorded engine or pod can be replayed separately.'
+          : 'vLLM metrics are aggregate because the source CSV does not preserve pod labels.',
       ],
     },
   }

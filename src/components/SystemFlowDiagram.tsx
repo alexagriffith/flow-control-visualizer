@@ -5,6 +5,7 @@ import type { QueueFrame, RunData, TimelineFrame } from '../types'
 type SystemFlowDiagramProps = {
   run: RunData
   frame: TimelineFrame
+  playing: boolean
 }
 
 const REQUIRED_PRIORITY_BANDS = [100, 0, -10]
@@ -25,7 +26,9 @@ function QueueDots({ queue }: { queue: QueueFrame }) {
   const visibleDots = Math.min(12, queue.size)
   return (
     <div className="diagram-queue-dots" aria-hidden="true">
-      {Array.from({ length: visibleDots }, (_, index) => <i key={index} />)}
+      {Array.from({ length: visibleDots }, (_, index) => (
+        <i key={index} style={{ '--dot-index': index } as CSSProperties} />
+      ))}
       {queue.size > visibleDots ? <span>+{formatCount(queue.size - visibleDots)}</span> : null}
       {queue.size === 0 ? <em>empty</em> : null}
     </div>
@@ -86,7 +89,7 @@ function Connector({ label, holding }: { label: string; holding?: boolean }) {
   )
 }
 
-export function SystemFlowDiagram({ run, frame }: SystemFlowDiagramProps) {
+export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProps) {
   const priorities = [...new Set([...REQUIRED_PRIORITY_BANDS, ...frame.queues.map((queue) => queue.priority)])]
     .sort((left, right) => right - left)
   const totalQueued = frame.queues.reduce((total, queue) => total + queue.size, 0)
@@ -99,7 +102,7 @@ export function SystemFlowDiagram({ run, frame }: SystemFlowDiagramProps) {
   const sequencePercent = maxSequences ? Math.min(100, (running / maxSequences) * 100) : null
 
   return (
-    <section className="system-diagram" aria-labelledby="system-diagram-title">
+    <section className={`system-diagram ${playing ? 'is-playing' : ''}`} aria-labelledby="system-diagram-title">
       <header className="system-diagram-header">
         <div>
           <p className="eyebrow">Selected moment</p>
@@ -193,7 +196,9 @@ export function SystemFlowDiagram({ run, frame }: SystemFlowDiagramProps) {
                 <strong>{formatCount(pod?.waiting ?? 0)}</strong>
               </header>
               <div className="runtime-queue-track" aria-hidden="true">
-                {Array.from({ length: Math.min(14, pod?.waiting ?? 0) }, (_, index) => <i key={index} />)}
+                {Array.from({ length: Math.min(14, pod?.waiting ?? 0) }, (_, index) => (
+                  <i key={index} style={{ '--dot-index': index } as CSSProperties} />
+                ))}
                 {(pod?.waiting ?? 0) === 0 ? <em>empty</em> : null}
                 {(pod?.waiting ?? 0) > 14 ? <b>+{formatCount((pod?.waiting ?? 0) - 14)}</b> : null}
               </div>

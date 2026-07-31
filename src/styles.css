@@ -1236,6 +1236,16 @@ footer {
   font-size: 21px;
 }
 
+.system-diagram.is-playing .component-connector:not(.connector-holding) .connector-track b {
+  animation: dispatch-arrow 900ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes dispatch-arrow {
+  0% { opacity: 0.35; transform: translateX(-17px); }
+  55% { opacity: 1; }
+  100% { opacity: 0.35; transform: translateX(0); }
+}
+
 .endpoint-picker-component,
 .vllm-component {
   min-width: 0;
@@ -1397,6 +1407,12 @@ footer {
   border: 1px solid color-mix(in srgb, var(--flow-color) 26%, #c7d0d6);
   border-radius: 5px;
   background: rgba(255, 255, 255, 0.82);
+  animation: queue-card-enter 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes queue-card-enter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .fairness-queue > span,
@@ -1428,6 +1444,13 @@ footer {
   height: 10px;
   border-radius: 1px;
   background: var(--flow-color);
+  animation: queue-dot-enter 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--dot-index, 0) * 18ms);
+}
+
+@keyframes queue-dot-enter {
+  from { opacity: 0; transform: scaleY(0.25); }
+  to { opacity: 1; transform: scaleY(1); }
 }
 
 .diagram-queue-dots span,
@@ -1540,6 +1563,7 @@ footer {
   height: 8px;
   border-radius: 1px;
   background: var(--teal);
+  transition: background-color 360ms ease, transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .saturation-gate.gate-is-holding i { background: var(--orange); transform: rotate(90deg); }
@@ -1634,6 +1658,8 @@ footer {
   height: 12px;
   border-radius: 2px;
   background: #ff9d5e;
+  animation: queue-dot-enter 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--dot-index, 0) * 18ms);
 }
 
 .runtime-queue-track em,
@@ -1655,6 +1681,14 @@ footer {
   width: 30px;
   height: 30px;
   border-color: #9aabb5;
+}
+
+.system-diagram.is-playing .scheduler-rotor b {
+  animation: scheduler-turn 1.4s linear infinite;
+}
+
+@keyframes scheduler-turn {
+  to { transform: rotate(360deg); }
 }
 
 .scheduler-step span,
@@ -2222,6 +2256,7 @@ main {
   height: 100%;
   border-radius: inherit;
   background: #2d78b8;
+  transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .active-request-bar.unknown i {
