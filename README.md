@@ -1,11 +1,13 @@
 # Flow Control Flight Recorder
 
-An interactive replay UI for llm-d flow-control experiments. It synchronizes three views over a
-single time cursor:
+An interactive replay UI for llm-d flow-control experiments. Its default component diagram shows
+requests moving through the Endpoint Picker's priority/fairness queues and into the vLLM local
+queue, scheduler, and continuously rebuilt batch. A synchronized telemetry view provides:
 
 - client traffic and in-flight pressure by tenant;
 - Endpoint Picker (EPP) admission queues by priority and fairness ID;
 - vLLM running, waiting, KV-cache, and continuous-batching pressure.
+- incoming and completed requests per second.
 
 The UI is careful about evidence boundaries. Aggregate metrics are presented as aggregate metrics;
 it does not invent a request route or exact vLLM batch membership when the run did not record them.
@@ -35,6 +37,25 @@ from the run selector. Use `--output` to choose another destination.
 ```bash
 npm run ingest -- --run-dir /absolute/path/to/a/run --output /tmp/run.json
 ```
+
+## Browse a run library
+
+Set one or more artifact roots in an ignored `.env.local` file. Separate roots with the operating
+system's path delimiter (`:` on macOS/Linux):
+
+```bash
+FLOW_RUN_ROOTS=/absolute/path/to/campaign-a:/absolute/path/to/campaign-b
+```
+
+Restart `npm run dev`. The experiment selector inventories every directory containing
+`client_samples.csv` and loads a selected run on demand. It labels entries as:
+
+- **Full replay:** client concurrency, EPP flow queues, and vLLM pressure.
+- **Queues + runtime:** EPP/vLLM replay without sampled client concurrency.
+- **Client/partial:** client timing plus whichever older metric fields remain compatible.
+
+The configured roots and selected source data stay local; `.env.local` and generated JSON are
+ignored by git.
 
 ## Data boundary
 

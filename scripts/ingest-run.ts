@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { basename, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { parseCsv, type CsvRow } from '../src/lib/csv'
 import type {
   QueueFrame,
@@ -13,14 +14,16 @@ const QUEUE_SIZE_PREFIX = 'inference_extension_flow_control_queue_size|'
 const QUEUE_BYTES_PREFIX = 'inference_extension_flow_control_queue_bytes|'
 const COLORS = ['#2d5bff', '#168f82', '#d95b30', '#6941c6', '#b7791f', '#0077a8']
 
-type Arguments = {
+export type IngestOptions = {
   runDir: string
   output: string
-  maxSequences: number
-  maxBatchedTokens: number
+  maxSequences: number | null
+  maxBatchedTokens: number | null
+  schedulerPolicy: string | null
+  chunkedPrefill: boolean | null
 }
 
-function parseArguments(argv: string[]): Arguments {
+function parseArguments(argv: string[]): IngestOptions {
   const valueAfter = (flag: string): string | undefined => {
     const index = argv.indexOf(flag)
     return index >= 0 ? argv[index + 1] : undefined
@@ -33,11 +36,17 @@ function parseArguments(argv: string[]): Arguments {
     )
   }
 
+  const maxSequences = valueAfter('--max-seqs')
+  const maxBatchedTokens = valueAfter('--max-batched-tokens')
+  const chunkedPrefill = valueAfter('--chunked-prefill')
+
   return {
     runDir: resolve(runDir),
     output: resolve(valueAfter('--output') ?? 'public/data/run.json'),
-    maxSequences: Number(valueAfter('--max-seqs') ?? 128),
-    maxBatchedTokens: Number(valueAfter('--max-batched-tokens') ?? 8192),
+    maxSequences: maxSequences === undefined ? null : Number(maxSequences),
+    maxBatchedTokens: maxBatchedTokens === undefined ? null : Number(maxBatchedTokens),
+    schedulerPolicy: valueAfter('--scheduler-policy') ?? null,
+    chunkedPrefill: chunkedPrefill === undefined ? null : chunkedPrefill !== 'false',
   }
 }
 
@@ -50,12 +59,28 @@ async function readCsv(path: string): Promise<CsvRow[]> {
   return parseCsv(await readFile(path, 'utf8'))
 }
 
+async function readCsvOptional(path: string): Promise<CsvRow[]> {
+  try {
+    return await readCsv(path)
+  } catch {
+    return []
+  }
+}
+
 async function readSummary(path: string): Promise<Record<string, unknown>> {
   try {
     return JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
   } catch {
     return {}
   }
+}
+
+async function readBenchmarkConfig(runDir: string): Promise<Record<string, unknown>> {
+  for (const directory of [runDir, dirname(runDir), dirname(dirname(runDir))]) {
+    const config = await readSummary(resolve(directory, 'benchmark_config.json'))
+    if (Object.keys(config).length > 0) return config
+  }
+  return {}
 }
 
 function tenantDefinitions(rows: CsvRow[]): TenantDefinition[] {
@@ -115,15 +140,51 @@ function nearestTenantFrames(
 
 function queuesFor(
   row: CsvRow,
-  queueIds: string[],
+  queueKeys: string[],
   tenantById: Map<string, TenantDefinition>,
 ): QueueFrame[] {
-  return queueIds.map((id) => ({
-    id,
-    priority: tenantById.get(id)?.priority ?? 0,
-    size: numeric(row, `${QUEUE_SIZE_PREFIX}${id}`),
-    bytes: numeric(row, `${QUEUE_BYTES_PREFIX}${id}`),
-  }))
+  const inferredPriority = (id: string): number => {
+    const recorded = tenantById.get(id)?.priority
+    if (recorded !== undefined) return recorded
+    if (id.toLowerCase().includes('premium')) return 100
+    if (id.toLowerCase().includes('batch')) return -10
+    return 0
+  }
+
+  return queueKeys.map((sizeKey) => {
+    const suffix = sizeKey.slice(QUEUE_SIZE_PREFIX.length)
+    const labels = Object.fromEntries(
+      suffix.split('|').filter((part) => part.includes('=')).map((part) => {
+        const separator = part.indexOf('=')
+        return [part.slice(0, separator), part.slice(separator + 1)]
+      }),
+    )
+    const id = labels.fairness_id ?? suffix
+    const recordedPriority = Number(labels.priority)
+    return {
+      id,
+      priority: Number.isFinite(recordedPriority) ? recordedPriority : inferredPriority(id),
+      size: numeric(row, sizeKey),
+      bytes: numeric(row, `${QUEUE_BYTES_PREFIX}${suffix}`),
+    }
+  })
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {}
+}
+
+function finiteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function booleanValue(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value
+  if (value === 'on' || value === 'true') return true
+  if (value === 'off' || value === 'false') return false
+  return null
 }
 
 function eventCounts(requests: RequestSample[], frameTimes: number[]): Array<[number, number]> {
@@ -160,12 +221,13 @@ function sampleInterval(times: number[]): number {
   return differences[Math.floor(differences.length / 2)]
 }
 
-async function ingest(args: Arguments): Promise<RunData> {
-  const [clientRows, concurrencyRows, metricRows, summary] = await Promise.all([
+export async function ingestRun(args: IngestOptions): Promise<RunData> {
+  const [clientRows, concurrencyRows, metricRows, summary, benchmarkConfig] = await Promise.all([
     readCsv(resolve(args.runDir, 'client_samples.csv')),
-    readCsv(resolve(args.runDir, 'concurrency_samples.csv')),
+    readCsvOptional(resolve(args.runDir, 'concurrency_samples.csv')),
     readCsv(resolve(args.runDir, 'metric_samples.csv')),
     readSummary(resolve(args.runDir, 'summary.json')),
+    readBenchmarkConfig(args.runDir),
   ])
 
   if (metricRows.length === 0) throw new Error('metric_samples.csv contains no samples')
@@ -180,9 +242,8 @@ async function ingest(args: Arguments): Promise<RunData> {
     samplesByTenant.set(row.tenant, samples)
   }
 
-  const queueIds = Object.keys(metricRows[0])
+  const queueKeys = Object.keys(metricRows[0])
     .filter((key) => key.startsWith(QUEUE_SIZE_PREFIX))
-    .map((key) => key.slice(QUEUE_SIZE_PREFIX.length))
   const frameTimes = metricRows.map((row) => numeric(row, 'elapsed_s'))
   const counts = eventCounts(requests, frameTimes)
 
@@ -192,14 +253,14 @@ async function ingest(args: Arguments): Promise<RunData> {
     arrivals: counts[index][0],
     completions: counts[index][1],
     tenants: nearestTenantFrames(samplesByTenant, tenants, frameTimes[index]),
-    queues: queuesFor(row, queueIds, tenantById),
+    queues: queuesFor(row, queueKeys, tenantById),
     vllm: [
       {
         pod: 'vllm-aggregate',
         running: numeric(row, 'vllm:num_requests_running'),
         waiting: numeric(row, 'vllm:num_requests_waiting'),
-        kvCacheUsage: numeric(row, 'vllm:kv_cache_usage_perc'),
-        preemptions: numeric(row, 'vllm:num_preemptions_total'),
+        kvCacheUsage: numeric(row, 'vllm:kv_cache_usage_perc') || numeric(row, 'vllm:gpu_cache_usage_perc'),
+        preemptions: numeric(row, 'vllm:num_preemptions') || numeric(row, 'vllm:num_preemptions_total'),
         aggregated: true,
       },
     ],
@@ -207,6 +268,16 @@ async function ingest(args: Arguments): Promise<RunData> {
 
   const runId = String(summary.run_id ?? metricRows[0].run_id ?? basename(args.runDir))
   const scenario = String(summary.scenario ?? metricRows[0].scenario ?? 'Unknown scenario')
+  const runtimeConfig = objectValue(benchmarkConfig.vllm_runtime)
+  const maxSequences = args.maxSequences ?? finiteNumber(runtimeConfig.max_num_seqs)
+  const maxBatchedTokens = args.maxBatchedTokens ?? finiteNumber(runtimeConfig.max_num_batched_tokens)
+  const schedulerPolicy = args.schedulerPolicy ?? (
+    typeof runtimeConfig.scheduler_policy === 'string' && runtimeConfig.scheduler_policy !== 'unknown'
+      ? runtimeConfig.scheduler_policy
+      : null
+  )
+  const chunkedPrefill = args.chunkedPrefill ?? booleanValue(runtimeConfig.chunked_prefill)
+  const hasRequestIds = clientRows.some((row) => Boolean(row.client_request_id))
 
   return {
     schemaVersion: 1,
@@ -219,11 +290,14 @@ async function ingest(args: Arguments): Promise<RunData> {
       source: 'ingested',
     },
     limits: {
-      maxSequences: args.maxSequences,
-      maxBatchedTokens: args.maxBatchedTokens,
+      maxSequences,
+      maxBatchedTokens,
+    },
+    runtime: {
+      schedulerPolicy,
+      chunkedPrefill,
     },
     tenants,
-    requests,
     frames,
     summary: {
       requestCount: requests.length,
@@ -235,10 +309,12 @@ async function ingest(args: Arguments): Promise<RunData> {
     },
     evidence: {
       metricResolution: `${sampleInterval(frameTimes).toFixed(2)} seconds`,
-      requestCorrelation: false,
+      requestCorrelation: hasRequestIds,
       exactBatchMembership: false,
       notes: [
-        'Client and server metrics share elapsed run time but do not carry a common request ID.',
+        hasRequestIds
+          ? 'Client request IDs and token event timing are available; engine-step membership is not.'
+          : 'Client and server metrics share elapsed run time but do not carry a common request ID.',
         'Queue transitions shorter than the sampling interval may not appear.',
         'vLLM metrics are aggregate because the source CSV does not preserve pod labels.',
       ],
@@ -248,16 +324,18 @@ async function ingest(args: Arguments): Promise<RunData> {
 
 async function main(): Promise<void> {
   const args = parseArguments(process.argv.slice(2))
-  const data = await ingest(args)
-  await mkdir(resolve(args.output, '..'), { recursive: true })
+  const data = await ingestRun(args)
+  await mkdir(dirname(args.output), { recursive: true })
   await writeFile(args.output, `${JSON.stringify(data)}\n`, 'utf8')
   process.stdout.write(
     `Ingested ${data.summary.requestCount} requests and ${data.frames.length} metric frames into ${args.output}\n`,
   )
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error)
-  process.stderr.write(`Ingestion failed: ${message}\n`)
-  process.exitCode = 1
-})
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`Ingestion failed: ${message}\n`)
+    process.exitCode = 1
+  })
+}

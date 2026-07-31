@@ -63,8 +63,8 @@ export const demoRun: RunData = {
     source: 'demo',
   },
   limits: { maxSequences: 128, maxBatchedTokens: 8192 },
+  runtime: { schedulerPolicy: 'fcfs', chunkedPrefill: true },
   tenants,
-  requests: [],
   frames,
   summary: {
     requestCount: 1_184,

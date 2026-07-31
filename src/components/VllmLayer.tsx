@@ -8,9 +8,10 @@ type VllmLayerProps = {
 
 function PodCard({ pod, run }: { pod: VllmFrame; run: RunData }) {
   const cells = 64
-  const representedPerCell = run.limits.maxSequences / cells
-  const occupiedCells = Math.min(cells, Math.ceil(pod.running / representedPerCell))
-  const sequencePercent = Math.min(100, (pod.running / run.limits.maxSequences) * 100)
+  const maximum = run.limits.maxSequences
+  const representedPerCell = maximum ? maximum / cells : null
+  const occupiedCells = representedPerCell ? Math.min(cells, Math.ceil(pod.running / representedPerCell)) : 0
+  const sequencePercent = maximum ? Math.min(100, (pod.running / maximum) * 100) : null
 
   return (
     <article className="pod-card">
@@ -30,17 +31,19 @@ function PodCard({ pod, run }: { pod: VllmFrame; run: RunData }) {
           <p className="eyebrow">Current iteration pressure</p>
           <h4>Continuous batch</h4>
         </div>
-        <span>{formatCount(pod.running)} / {formatCount(run.limits.maxSequences)} sequences</span>
+        <span>{formatCount(pod.running)}{maximum ? ` / ${formatCount(maximum)}` : ''} active</span>
       </div>
 
-      <div className="sequence-grid" aria-label={`${pod.running} of ${run.limits.maxSequences} sequence slots occupied`}>
-        {Array.from({ length: cells }, (_, index) => (
-          <i key={index} className={index < occupiedCells ? 'sequence-cell occupied' : 'sequence-cell'} />
-        ))}
-      </div>
+      {maximum ? (
+        <div className="sequence-grid" aria-label={`${pod.running} of ${maximum} configured requests active`}>
+          {Array.from({ length: cells }, (_, index) => (
+            <i key={index} className={index < occupiedCells ? 'sequence-cell occupied' : 'sequence-cell'} />
+          ))}
+        </div>
+      ) : null}
       <div className="sequence-caption">
-        <span>{sequencePercent.toFixed(0)}% sequence occupancy</span>
-        <span>Each cell ≈ {representedPerCell.toFixed(representedPerCell < 10 ? 1 : 0)} slots</span>
+        <span>{sequencePercent === null ? 'Configured limit not captured' : `${sequencePercent.toFixed(0)}% of configured limit`}</span>
+        {representedPerCell ? <span>Each cell ≈ {representedPerCell.toFixed(representedPerCell < 10 ? 1 : 0)} requests</span> : null}
       </div>
 
       <div className="pod-metric-grid">
@@ -51,8 +54,8 @@ function PodCard({ pod, run }: { pod: VllmFrame; run: RunData }) {
         </div>
         <div>
           <span>Iteration token ceiling</span>
-          <strong>{formatCount(run.limits.maxBatchedTokens)}</strong>
-          <small>configured limit</small>
+          <strong>{run.limits.maxBatchedTokens ? formatCount(run.limits.maxBatchedTokens) : 'Not captured'}</strong>
+          <small>{run.limits.maxBatchedTokens ? 'configured limit' : 'older run'}</small>
         </div>
         <div>
           <span>Preemptions</span>

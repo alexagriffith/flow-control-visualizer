@@ -6,3 +6,4 @@ public/data/*.json
 coverage/
 playwright-report/
 test-results/
+.env.local

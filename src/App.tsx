@@ -3,10 +3,11 @@ import { ClientLayer } from './components/ClientLayer'
 import { EppLayer } from './components/EppLayer'
 import { TimelineControl } from './components/TimelineControl'
 import { VllmLayer } from './components/VllmLayer'
+import { SystemFlowDiagram } from './components/SystemFlowDiagram'
 import { demoRun } from './demo-run'
 import { formatCount, humanizeIdentifier } from './lib/format'
 import { frameIndexAtTime } from './lib/timeline'
-import type { RunData } from './types'
+import type { RunCatalogEntry, RunData } from './types'
 
 function isRunData(value: unknown): value is RunData {
   if (!value || typeof value !== 'object') return false
@@ -14,29 +15,57 @@ function isRunData(value: unknown): value is RunData {
   return candidate.schemaVersion === 1 && Array.isArray(candidate.frames) && candidate.frames.length > 0
 }
 
+function peakQueueTime(run: RunData): number {
+  const peakFrame = run.frames.reduce((peak, candidate) => {
+    const peakQueue = Math.max(0, ...peak.queues.map((queue) => queue.size))
+    const candidateQueue = Math.max(0, ...candidate.queues.map((queue) => queue.size))
+    return candidateQueue > peakQueue ? candidate : peak
+  }, run.frames[0])
+  return peakFrame.time
+}
+
 export default function App() {
   const [loadedRun, setLoadedRun] = useState<RunData | null>(null)
-  const [source, setSource] = useState<'demo' | 'loaded'>('demo')
+  const [run, setRun] = useState<RunData>(demoRun)
+  const [catalog, setCatalog] = useState<RunCatalogEntry[]>([])
+  const [source, setSource] = useState('demo')
+  const [loadingRun, setLoadingRun] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
   const [cursor, setCursor] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
+  const [viewMode, setViewMode] = useState<'diagram' | 'telemetry'>('diagram')
   const lastTick = useRef<number | null>(null)
-  const run = source === 'loaded' && loadedRun ? loadedRun : demoRun
+  const runCache = useRef(new Map<string, RunData>())
   const duration = Math.max(run.metadata.duration, run.frames.at(-1)?.time ?? 0)
   const frameIndex = useMemo(() => frameIndexAtTime(run.frames, cursor), [run.frames, cursor])
   const frame = run.frames[frameIndex]
 
   useEffect(() => {
     let active = true
-    fetch('/data/run.json')
-      .then((response) => {
-        if (!response.ok) throw new Error('No ingested run')
-        return response.json() as Promise<unknown>
-      })
-      .then((data) => {
-        if (active && isRunData(data)) setLoadedRun(data)
-      })
-      .catch(() => undefined)
+    const staticRun = fetch('/data/run.json').then(async (response) =>
+      response.ok ? response.json() as Promise<unknown> : null,
+    )
+    const runCatalog = fetch('/api/runs').then(async (response) =>
+      response.ok ? response.json() as Promise<unknown> : [],
+    )
+
+    Promise.allSettled([staticRun, runCatalog]).then(([staticResult, catalogResult]) => {
+      if (!active) return
+      if (staticResult.status === 'fulfilled' && isRunData(staticResult.value)) {
+        const normalized = {
+          ...staticResult.value,
+          runtime: staticResult.value.runtime ?? { schedulerPolicy: null, chunkedPrefill: null },
+        }
+        setLoadedRun(normalized)
+        setRun(normalized)
+        setSource('loaded')
+        setCursor(peakQueueTime(normalized))
+      }
+      if (catalogResult.status === 'fulfilled' && Array.isArray(catalogResult.value)) {
+        setCatalog(catalogResult.value as RunCatalogEntry[])
+      }
+    })
     return () => {
       active = false
     }
@@ -67,11 +96,59 @@ export default function App() {
     return () => cancelAnimationFrame(animationFrame)
   }, [duration, playing, speed])
 
-  const chooseSource = (nextSource: 'demo' | 'loaded') => {
+  const chooseSource = async (nextSource: string) => {
     setSource(nextSource)
-    setCursor(0)
     setPlaying(false)
+    setRunError(null)
+
+    if (nextSource === 'demo') {
+      setRun(demoRun)
+      setCursor(peakQueueTime(demoRun))
+      return
+    }
+
+    if (nextSource === 'loaded' && loadedRun) {
+      setRun(loadedRun)
+      setCursor(peakQueueTime(loadedRun))
+      return
+    }
+
+    const cached = runCache.current.get(nextSource)
+    if (cached) {
+      setRun(cached)
+      setCursor(peakQueueTime(cached))
+      return
+    }
+
+    setLoadingRun(true)
+    try {
+      const response = await fetch(`/api/run?id=${encodeURIComponent(nextSource)}`)
+      if (!response.ok) throw new Error('This run could not be loaded')
+      const data = await response.json() as unknown
+      if (!isRunData(data)) throw new Error('This run uses an unsupported artifact format')
+      const normalized = {
+        ...data,
+        runtime: data.runtime ?? { schedulerPolicy: null, chunkedPrefill: null },
+      }
+      runCache.current.set(nextSource, normalized)
+      setRun(normalized)
+      setCursor(peakQueueTime(normalized))
+    } catch (error) {
+      setRunError(error instanceof Error ? error.message : 'This run could not be loaded')
+    } finally {
+      setLoadingRun(false)
+    }
   }
+
+  const catalogGroups = useMemo(() => {
+    const groups = new Map<string, RunCatalogEntry[]>()
+    for (const entry of catalog) {
+      const entries = groups.get(entry.group) ?? []
+      entries.push(entry)
+      groups.set(entry.group, entries)
+    }
+    return [...groups.entries()]
+  }, [catalog])
 
   return (
     <div className="app-shell">
@@ -85,31 +162,38 @@ export default function App() {
         </a>
         <div className="run-context">
           <label>
-            <span>Replay source</span>
-            <select value={source} onChange={(event) => chooseSource(event.target.value as 'demo' | 'loaded')}>
+            <span>Experiment run</span>
+            <select value={source} disabled={loadingRun} onChange={(event) => void chooseSource(event.target.value)}>
               <option value="demo">Synthetic demo</option>
-              {loadedRun ? <option value="loaded">Loaded run</option> : null}
+              {loadedRun ? <option value="loaded">Current loaded run</option> : null}
+              {catalogGroups.map(([group, entries]) => (
+                <optgroup label={group} key={group}>
+                  {entries.map((entry) => (
+                    <option value={entry.id} key={entry.id}>
+                      {entry.replayLevel === 'full' ? 'Full replay' : entry.replayLevel === 'queues-and-runtime' ? 'Queues + runtime' : 'Client/partial'} · {entry.runId}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </label>
-          <span className="evidence-chip"><i /> Aggregate replay</span>
+          <span className="evidence-chip"><i /> {loadingRun ? 'Loading run' : `${catalog.length} runs available`}</span>
         </div>
       </header>
+
+      {runError ? <div className="run-error" role="alert">{runError}</div> : null}
 
       <main id="main">
         <section className="run-hero">
           <div className="hero-copy">
-            <p className="eyebrow">{humanizeIdentifier(run.metadata.runId)}</p>
-            <h1>Watch pressure become policy, then work.</h1>
-            <p className="hero-deck">
-              One clock across the client, EPP admission queues, and the vLLM runtime. Scrub to the
-              moment the pool saturates and see where requests wait.
-            </p>
+            <p className="eyebrow">Loaded run</p>
+            <h1>{humanizeIdentifier(run.metadata.runId)}</h1>
+            <p className="hero-deck">{humanizeIdentifier(run.metadata.scenario)}</p>
           </div>
           <dl className="run-summary">
             <div><dt>Requests</dt><dd>{formatCount(run.summary.requestCount)}</dd></div>
-            <div><dt>Peak EPP queue</dt><dd>{formatCount(run.summary.maxEppQueue)}</dd></div>
-            <div><dt>Peak vLLM wait</dt><dd>{formatCount(run.summary.maxVllmWaiting)}</dd></div>
-            <div><dt>Errors</dt><dd>{formatCount(run.summary.errorCount)}</dd></div>
+            <div><dt>EPP peak</dt><dd>{formatCount(run.summary.maxEppQueue)}</dd></div>
+            <div><dt>vLLM peak wait</dt><dd>{formatCount(run.summary.maxVllmWaiting)}</dd></div>
           </dl>
         </section>
 
@@ -117,6 +201,7 @@ export default function App() {
           frames={run.frames}
           cursor={cursor}
           duration={duration}
+          sampleInterval={run.metadata.sampleInterval}
           playing={playing}
           speed={speed}
           onCursorChange={(time) => {
@@ -130,34 +215,31 @@ export default function App() {
           onSpeedChange={setSpeed}
         />
 
-        <div className="flow-stack">
-          <ClientLayer run={run} frame={frame} frameIndex={frameIndex} />
-          <EppLayer run={run} frame={frame} />
-          <VllmLayer run={run} frame={frame} />
+        <div className="view-switcher" role="group" aria-label="Visualization mode">
+          <button type="button" aria-pressed={viewMode === 'diagram'} onClick={() => setViewMode('diagram')}>
+            Component flow
+          </button>
+          <button type="button" aria-pressed={viewMode === 'telemetry'} onClick={() => setViewMode('telemetry')}>
+            Telemetry
+          </button>
         </div>
 
-        <section className="evidence-panel" aria-labelledby="evidence-title">
-          <div>
-            <p className="eyebrow">Evidence boundary</p>
-            <h2 id="evidence-title">What this replay knows</h2>
+        {viewMode === 'diagram' ? (
+          <SystemFlowDiagram run={run} frame={frame} />
+        ) : (
+          <div className="flow-stack">
+            <ClientLayer run={run} frame={frame} frameIndex={frameIndex} />
+            <EppLayer run={run} frame={frame} />
+            <VllmLayer run={run} frame={frame} />
           </div>
-          <div className="evidence-state">
-            <span className="resolution-label">{run.evidence.metricResolution} samples</span>
-            <ul>
-              {run.evidence.notes.map((note) => <li key={note}>{note}</li>)}
-            </ul>
-          </div>
-          <div className="next-telemetry">
-            <span>Unlock exact request paths</span>
-            <p>Capture a shared trace ID, EPP queue and dispatch events, and opt-in vLLM iteration events.</p>
-          </div>
+        )}
+
+        <section className="source-strip" aria-label="Replay data boundary">
+          <span><i /> {run.evidence.metricResolution} samples</span>
+          <span>Exact: rates, queues, running, waiting, KV, preemptions</span>
+          <span>Not captured: engine-step membership</span>
         </section>
       </main>
-
-      <footer>
-        <span>llm-d experiment observability</span>
-        <span>{humanizeIdentifier(run.metadata.scenario)}</span>
-      </footer>
     </div>
   )
 }

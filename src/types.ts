@@ -57,11 +57,14 @@ export type RunData = {
     source: 'demo' | 'ingested'
   }
   limits: {
-    maxSequences: number
-    maxBatchedTokens: number
+    maxSequences: number | null
+    maxBatchedTokens: number | null
+  }
+  runtime: {
+    schedulerPolicy: string | null
+    chunkedPrefill: boolean | null
   }
   tenants: TenantDefinition[]
-  requests: RequestSample[]
   frames: TimelineFrame[]
   summary: {
     requestCount: number
@@ -77,4 +80,14 @@ export type RunData = {
     exactBatchMembership: boolean
     notes: string[]
   }
+}
+
+export type RunCatalogEntry = {
+  id: string
+  runId: string
+  scenario: string
+  group: string
+  duration: number
+  requestCount: number
+  replayLevel: 'full' | 'queues-and-runtime' | 'client-only'
 }

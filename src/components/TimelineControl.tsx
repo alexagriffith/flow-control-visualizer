@@ -1,11 +1,12 @@
 import { formatTime } from '../lib/format'
-import { pointsFor } from '../lib/timeline'
+import { frameIndexAtTime, pointsFor } from '../lib/timeline'
 import type { TimelineFrame } from '../types'
 
 type TimelineControlProps = {
   frames: TimelineFrame[]
   cursor: number
   duration: number
+  sampleInterval: number
   playing: boolean
   speed: number
   onCursorChange: (time: number) => void
@@ -17,6 +18,7 @@ export function TimelineControl({
   frames,
   cursor,
   duration,
+  sampleInterval,
   playing,
   speed,
   onCursorChange,
@@ -25,13 +27,17 @@ export function TimelineControl({
 }: TimelineControlProps) {
   const width = 1000
   const height = 76
-  const arrivals = pointsFor(frames, width, height, (frame) => frame.arrivals)
-  const completions = pointsFor(frames, width, height, (frame) => frame.completions)
+  const interval = Math.max(0.001, sampleInterval)
+  const arrivals = pointsFor(frames, width, height, (frame) => frame.arrivals / interval)
+  const completions = pointsFor(frames, width, height, (frame) => frame.completions / interval)
   const cursorX = duration > 0 ? (cursor / duration) * width : 0
+  const currentFrame = frames[frameIndexAtTime(frames, cursor)]
+  const incomingRps = (currentFrame?.arrivals ?? 0) / interval
 
   return (
     <section className="timeline-shell" aria-label="Run playback">
       <div className="timeline-controls">
+        <span className="timeline-title">Requests/sec</span>
         <button
           className="play-button"
           type="button"
@@ -73,9 +79,9 @@ export function TimelineControl({
         />
       </div>
       <div className="timeline-legend" aria-hidden="true">
-        <span><i className="legend-line arrivals" /> Arrivals</span>
-        <span><i className="legend-line completions" /> Completions</span>
-        <span className="scrub-hint">Drag anywhere on the trace</span>
+        <span className="request-rate-now"><strong>{incomingRps.toFixed(1)}</strong> now</span>
+        <span><i className="legend-line arrivals" /> Incoming</span>
+        <span><i className="legend-line completions" /> Completed</span>
       </div>
     </section>
   )
