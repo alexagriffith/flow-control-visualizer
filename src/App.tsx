@@ -37,6 +37,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'diagram' | 'telemetry'>('diagram')
   const lastTick = useRef<number | null>(null)
   const runCache = useRef(new Map<string, RunData>())
+  const urlPlaybackApplied = useRef(false)
   const duration = Math.max(run.metadata.duration, run.frames.at(-1)?.time ?? 0)
   const frameIndex = useMemo(() => frameIndexAtTime(run.frames, cursor), [run.frames, cursor])
   const frame = run.frames[frameIndex]
@@ -69,6 +70,12 @@ export default function App() {
     return () => {
       active = false
     }
+  }, [])
+
+  useEffect(() => {
+    const recordingMode = new URLSearchParams(window.location.search).get('record') === '1'
+    document.body.classList.toggle('recording-mode', recordingMode)
+    return () => document.body.classList.remove('recording-mode')
   }, [])
 
   useEffect(() => {
@@ -139,6 +146,23 @@ export default function App() {
       setLoadingRun(false)
     }
   }
+
+  useEffect(() => {
+    if (urlPlaybackApplied.current || catalog.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const requestedRun = params.get('run')
+    if (!requestedRun) return
+
+    urlPlaybackApplied.current = true
+    const requestedTime = Number(params.get('time'))
+    const requestedSpeed = Number(params.get('speed'))
+    if ([0.5, 1, 2, 4].includes(requestedSpeed)) setSpeed(requestedSpeed)
+
+    void chooseSource(requestedRun).then(() => {
+      if (Number.isFinite(requestedTime) && requestedTime >= 0) setCursor(requestedTime)
+      if (params.get('autoplay') === '1') setPlaying(true)
+    })
+  }, [catalog.length])
 
   const catalogGroups = useMemo(() => {
     const groups = new Map<string, RunCatalogEntry[]>()

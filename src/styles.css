@@ -1903,6 +1903,101 @@ footer {
   }
 }
 
+body.recording-mode {
+  width: 881px;
+  overflow: hidden;
+  background: #edf1f3;
+}
+
+.recording-mode .app-shell {
+  width: 1360px;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: scale(0.645);
+  transform-origin: top left;
+}
+
+.recording-mode .masthead,
+.recording-mode .run-context,
+.recording-mode .layer-header {
+  align-items: center;
+  flex-direction: row;
+}
+
+.recording-mode main {
+  padding-right: 28px;
+  padding-left: 28px;
+}
+
+.recording-mode .run-context {
+  width: auto;
+}
+
+.recording-mode .run-context select {
+  width: 440px;
+}
+
+.recording-mode .run-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-top: 23px;
+}
+
+.recording-mode .run-hero h1 {
+  font-size: 30px;
+  white-space: nowrap;
+}
+
+.recording-mode .timeline-shell {
+  grid-template-columns: 235px minmax(0, 1fr);
+  margin-right: 0;
+  margin-left: 0;
+  border-radius: 12px;
+}
+
+.recording-mode .timeline-controls {
+  display: flex;
+  grid-template-columns: none;
+}
+
+.recording-mode .speed-control {
+  display: flex;
+}
+
+.recording-mode .component-flow-canvas {
+  grid-template-columns: minmax(125px, 0.38fr) 44px minmax(480px, 1.55fr) 44px minmax(330px, 1fr);
+}
+
+.recording-mode .component-connector {
+  align-items: stretch;
+  min-height: 0;
+}
+
+.recording-mode .connector-track {
+  width: auto;
+  transform: none;
+}
+
+.recording-mode .ingress-component {
+  display: flex;
+}
+
+.recording-mode .request-streams {
+  grid-template-columns: 1fr;
+}
+
+.recording-mode .priority-band {
+  grid-template-columns: 82px minmax(0, 1fr) 52px;
+}
+
+.recording-mode .fairness-queues {
+  flex-direction: row;
+}
+
+.recording-mode .band-dispatch {
+  display: flex;
+}
+
 /* Compact replay surface: the chart and component path carry the page. */
 body {
   background: #edf1f3;
