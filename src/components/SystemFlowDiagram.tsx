@@ -100,6 +100,10 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
   const running = pod?.running ?? 0
   const maxSequences = run.limits.maxSequences
   const sequencePercent = maxSequences ? Math.min(100, (running / maxSequences) * 100) : null
+  const batchCells = 16
+  const activeBatchCells = sequencePercent === null
+    ? (running > 0 ? batchCells : 0)
+    : Math.min(batchCells, Math.max(running > 0 ? 1 : 0, Math.round((sequencePercent / 100) * batchCells)))
 
   return (
     <section className={`system-diagram ${playing ? 'is-playing' : ''}`} aria-labelledby="system-diagram-title">
@@ -205,7 +209,7 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
             </section>
 
             <div className="scheduler-step">
-              <div className="scheduler-rotor" aria-hidden="true"><i /><b>↻</b></div>
+              <div className="scheduler-rotor" aria-hidden="true"><i /></div>
               <span>Scheduler</span>
               <strong>{run.runtime.schedulerPolicy?.toUpperCase() ?? 'NOT CAPTURED'}</strong>
             </div>
@@ -219,13 +223,23 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
                 <strong>{formatCount(running)} active{maxSequences ? ` / ${formatCount(maxSequences)}` : ''}</strong>
               </header>
 
-              {sequencePercent === null ? (
-                <div className="active-request-bar unknown"><i /></div>
-              ) : (
-                <div className="active-request-bar" aria-label={`${sequencePercent.toFixed(0)} percent of configured request limit`}>
-                  <i style={{ width: `${sequencePercent}%` }} />
-                </div>
-              )}
+              <div
+                className={`batch-capacity-strip ${sequencePercent === null ? 'capacity-unknown' : ''}`}
+                aria-label={sequencePercent === null
+                  ? `${running} active requests; configured request limit not captured`
+                  : `${sequencePercent.toFixed(0)} percent of configured request limit`}
+              >
+                {Array.from({ length: batchCells }, (_, index) => (
+                  <i
+                    key={index}
+                    className={index < activeBatchCells ? 'active' : ''}
+                    style={{ '--cell-index': index } as CSSProperties}
+                  />
+                ))}
+              </div>
+              <small className="batch-capacity-note">
+                {sequencePercent === null ? 'Capacity not captured · motion shows scheduler turnover' : 'Capacity used · motion shows scheduler turnover'}
+              </small>
               <div className="batch-facts">
                 <span>KV <strong>{formatPercent(pod?.kvCacheUsage ?? 0)}</strong></span>
                 <span>Preemptions <strong>{formatCount(pod?.preemptions ?? 0)}</strong></span>

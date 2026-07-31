@@ -1683,7 +1683,16 @@ footer {
   border-color: #9aabb5;
 }
 
-.system-diagram.is-playing .scheduler-rotor b {
+.scheduler-rotor i {
+  position: absolute;
+  inset: 4px;
+  border: 2px solid #c5d0d6;
+  border-top-color: #2d78b8;
+  border-right-color: #2d78b8;
+  border-radius: 50%;
+}
+
+.system-diagram.is-playing .scheduler-rotor i {
   animation: scheduler-turn 1.4s linear infinite;
 }
 
@@ -2243,25 +2252,50 @@ main {
   padding: 10px;
 }
 
-.active-request-bar {
-  height: 9px;
+.batch-capacity-strip {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(0, 1fr));
+  gap: 3px;
+  width: 100%;
+  height: 10px;
   margin-top: 10px;
   overflow: hidden;
-  border-radius: 99px;
-  background: #e3e9ed;
+  border-radius: 3px;
 }
 
-.active-request-bar i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
+.batch-capacity-strip i {
+  min-width: 0;
+  border-radius: 2px;
+  background: #dce4e9;
+  transition: background-color 300ms ease, opacity 300ms ease;
+}
+
+.batch-capacity-strip i.active {
   background: #2d78b8;
-  transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.active-request-bar.unknown i {
-  width: 100%;
-  background: repeating-linear-gradient(90deg, #9dabb3 0 8px, transparent 8px 12px);
+.batch-capacity-strip.capacity-unknown i.active {
+  background: #718d9d;
+}
+
+.system-diagram.is-playing .batch-capacity-strip i.active {
+  animation: batch-turnover 1.8s ease-in-out infinite;
+  animation-delay: calc(var(--cell-index, 0) * 70ms);
+}
+
+@keyframes batch-turnover {
+  0%, 62%, 100% { opacity: 0.72; transform: translateY(0); }
+  18% { opacity: 1; transform: translateY(-1px); }
+}
+
+.batch-capacity-note {
+  display: block;
+  margin-top: 5px;
+  color: #788791;
+  font-family: var(--mono);
+  font-size: 6px;
+  line-height: 1.35;
+  text-transform: uppercase;
 }
 
 .batch-facts {
@@ -2449,4 +2483,41 @@ main {
 
 .recording-mode .diagram-live-readout {
   margin-top: 0;
+}
+
+.recording-mode .timeline-shell {
+  position: relative;
+  top: auto;
+  grid-template-columns: 235px minmax(0, 1fr);
+}
+
+.recording-mode .timeline-controls {
+  display: grid;
+  width: 235px;
+  min-width: 0;
+  max-width: 235px;
+  grid-template-columns: 88px 133px;
+  grid-template-rows: auto auto auto;
+  gap: 3px 14px;
+  overflow: hidden;
+}
+
+.recording-mode .timeline-title {
+  grid-column: 1 / -1;
+}
+
+.recording-mode .play-button {
+  grid-row: 2 / span 2;
+  grid-column: 1;
+}
+
+.recording-mode .time-readout {
+  grid-row: 2;
+  grid-column: 2;
+}
+
+.recording-mode .speed-control {
+  grid-row: 3;
+  grid-column: 2;
+  justify-self: start;
 }
