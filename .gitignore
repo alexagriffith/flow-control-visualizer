@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+public/data/*.json
+!public/data/.gitkeep
+coverage/
+playwright-report/
+test-results/
