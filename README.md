@@ -24,7 +24,8 @@ The built-in synthetic run demonstrates the interface without private experiment
 ## Load an experiment
 
 The ingestion script accepts a directory containing `client_samples.csv`,
-`concurrency_samples.csv`, `metric_samples.csv`, and optionally `summary.json`:
+`concurrency_samples.csv`, `metric_samples.csv`, and optionally `summary.json` and
+`benchmark_config.json`:
 
 ```bash
 npm run ingest -- --run-dir /absolute/path/to/a/run
@@ -56,6 +57,30 @@ Restart `npm run dev`. The experiment selector inventories every directory conta
 
 The configured roots and selected source data stay local; `.env.local` and generated JSON are
 ignored by git.
+
+### Run configuration
+
+The replay derives tenants from the captured client data. Runtime limits and routing-band display
+metadata can be supplied with the run instead of changing the UI:
+
+```json
+{
+  "vllm_runtime": {
+    "max_num_seqs": 128,
+    "max_num_batched_tokens": 8192
+  },
+  "epp_runtime": {
+    "priority_bands": [
+      { "priority": 100, "label": "Premium", "color": "#2d5bff" },
+      { "priority": 0, "label": "Standard", "color": "#168f82" }
+    ]
+  }
+}
+```
+
+Any number of bands and tenants is supported. The continuous-batch grid uses `max_num_seqs` as its
+configured size. vLLM does not expose a configured waiting-queue capacity, so the waiting grid uses
+the exact observed peak for that run and labels it as an observation rather than a limit.
 
 ## Data boundary
 

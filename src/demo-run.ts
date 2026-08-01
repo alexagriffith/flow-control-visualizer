@@ -64,6 +64,13 @@ export const demoRun: RunData = {
   },
   limits: { maxSequences: 128, maxBatchedTokens: 8192 },
   runtime: { schedulerPolicy: 'fcfs', chunkedPrefill: true },
+  routing: {
+    priorityBands: [
+      { priority: 100, label: 'Premium', color: '#2d5bff' },
+      { priority: 0, label: 'Standard', color: '#168f82' },
+      { priority: -10, label: 'Batch', color: '#d95b30' },
+    ],
+  },
   tenants,
   frames,
   summary: {

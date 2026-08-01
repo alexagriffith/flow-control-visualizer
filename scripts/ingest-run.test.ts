@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { vllmFor } from './ingest-run'
+import { configuredPriorityBands, vllmFor } from './ingest-run'
+
+describe('configuredPriorityBands', () => {
+  it('preserves arbitrary configured bands, labels, and colors', () => {
+    expect(configuredPriorityBands({
+      epp_runtime: {
+        priority_bands: [
+          { priority: 25, label: 'Interactive', color: '#7457d9' },
+          { priority: -4, label: 'Background', color: '#8a6f45' },
+        ],
+      },
+    })).toEqual([
+      { priority: 25, label: 'Interactive', color: '#7457d9' },
+      { priority: -4, label: 'Background', color: '#8a6f45' },
+    ])
+  })
+
+  it('also reads the legacy top-level priority band list', () => {
+    expect(configuredPriorityBands({
+      priority_bands: [{ priority: 7 }],
+    })).toEqual([{ priority: 7, label: null, color: null }])
+  })
+})
 
 describe('vllmFor', () => {
   it('keeps older aggregate samples compatible', () => {

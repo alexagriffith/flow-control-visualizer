@@ -9,20 +9,6 @@ type SystemFlowDiagramProps = {
   playing: boolean
 }
 
-const REQUIRED_PRIORITY_BANDS = [100, 0, -10]
-
-function priorityName(priority: number): string {
-  if (priority > 0) return 'Premium'
-  if (priority < 0) return 'Batch'
-  return 'Standard'
-}
-
-function priorityClass(priority: number): string {
-  if (priority > 0) return 'priority-premium'
-  if (priority < 0) return 'priority-batch'
-  return 'priority-standard'
-}
-
 function QueueDots({ queue }: { queue: QueueFrame }) {
   const visibleDots = Math.min(12, queue.size)
   return (
@@ -36,16 +22,32 @@ function QueueDots({ queue }: { queue: QueueFrame }) {
   )
 }
 
-function PriorityBand({ priority, queues, run }: { priority: number; queues: QueueFrame[]; run: RunData }) {
+function PriorityBand({
+  priority,
+  label,
+  color,
+  queues,
+  run,
+}: {
+  priority: number
+  label: string | null
+  color: string
+  queues: QueueFrame[]
+  run: RunData
+}) {
   const queued = queues.reduce((total, queue) => total + queue.size, 0)
   const activeQueues = queues.filter((queue) => queue.size > 0)
   const emptyQueueCount = queues.length - activeQueues.length
   return (
-    <section className={`priority-band ${priorityClass(priority)}`} aria-label={`${priorityName(priority)} priority ${priority}`}>
+    <section
+      className="priority-band"
+      style={{ '--band-color': color, '--band-bg': `color-mix(in srgb, ${color} 8%, #fff)` } as CSSProperties}
+      aria-label={`${label ?? 'Priority'} ${priority}`}
+    >
       <header>
         <div>
           <strong>P{priority}</strong>
-          <span>{priorityName(priority)}</span>
+          <span>{label ?? 'Priority'}</span>
         </div>
         <b>{formatCount(queued)} queued</b>
       </header>
@@ -91,7 +93,11 @@ function Connector({ label, holding }: { label: string; holding?: boolean }) {
 }
 
 export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProps) {
-  const priorities = [...new Set([...REQUIRED_PRIORITY_BANDS, ...frame.queues.map((queue) => queue.priority)])]
+  const priorities = [...new Set([
+    ...(run.routing?.priorityBands.map((band) => band.priority) ?? []),
+    ...run.tenants.map((tenant) => tenant.priority),
+    ...frame.queues.map((queue) => queue.priority),
+  ])]
     .sort((left, right) => right - left)
   const totalQueued = frame.queues.reduce((total, queue) => total + queue.size, 0)
   const pod = frame.vllm[0]
@@ -109,7 +115,6 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
     <section className={`system-diagram ${playing ? 'is-playing' : ''}`} aria-labelledby="system-diagram-title">
       <header className="system-diagram-header">
         <div>
-          <p className="eyebrow">Selected moment</p>
           <h2 id="system-diagram-title">Request path</h2>
         </div>
         <div className="diagram-live-readout">
@@ -161,6 +166,10 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
               <PriorityBand
                 key={priority}
                 priority={priority}
+                label={run.routing?.priorityBands.find((band) => band.priority === priority)?.label ?? null}
+                color={run.routing?.priorityBands.find((band) => band.priority === priority)?.color
+                  ?? run.tenants.find((tenant) => tenant.priority === priority)?.color
+                  ?? '#71808b'}
                 queues={frame.queues.filter((queue) => queue.priority === priority)}
                 run={run}
               />

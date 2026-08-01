@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { parseCsv, type CsvRow } from '../src/lib/csv'
 import type {
   QueueFrame,
+  PriorityBandDefinition,
   RequestSample,
   RunData,
   TenantDefinition,
@@ -228,6 +229,24 @@ function booleanValue(value: unknown): boolean | null {
   return null
 }
 
+export function configuredPriorityBands(config: Record<string, unknown>): PriorityBandDefinition[] {
+  const eppRuntime = objectValue(config.epp_runtime)
+  const configured = Array.isArray(eppRuntime.priority_bands)
+    ? eppRuntime.priority_bands
+    : Array.isArray(config.priority_bands) ? config.priority_bands : []
+
+  return configured.flatMap((value) => {
+    const band = objectValue(value)
+    const priority = finiteNumber(band.priority)
+    if (priority === null) return []
+    return [{
+      priority,
+      label: typeof band.label === 'string' && band.label.trim() ? band.label.trim() : null,
+      color: typeof band.color === 'string' && band.color.trim() ? band.color.trim() : null,
+    }]
+  })
+}
+
 function eventCounts(requests: RequestSample[], frameTimes: number[]): Array<[number, number]> {
   const starts = requests.map((request) => request.start).sort((left, right) => left - right)
   const completions = requests
@@ -312,6 +331,17 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
   )
   const chunkedPrefill = args.chunkedPrefill ?? booleanValue(runtimeConfig.chunked_prefill)
   const hasRequestIds = clientRows.some((row) => Boolean(row.client_request_id))
+  const configuredBands = configuredPriorityBands(benchmarkConfig)
+  const observedPriorities = [...new Set([
+    ...configuredBands.map((band) => band.priority),
+    ...tenants.map((tenant) => tenant.priority),
+    ...frames.flatMap((frame) => frame.queues.map((queue) => queue.priority)),
+  ])].sort((left, right) => right - left)
+  const priorityBands = observedPriorities.map((priority) => {
+    const configured = configuredBands.find((band) => band.priority === priority)
+    const tenant = tenants.find((candidate) => candidate.priority === priority)
+    return configured ?? { priority, label: null, color: tenant?.color ?? null }
+  })
 
   return {
     schemaVersion: 1,
@@ -331,6 +361,7 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
       schedulerPolicy,
       chunkedPrefill,
     },
+    routing: { priorityBands },
     tenants,
     frames,
     summary: {

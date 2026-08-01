@@ -5,6 +5,12 @@ export type TenantDefinition = {
   color: string
 }
 
+export type PriorityBandDefinition = {
+  priority: number
+  label: string | null
+  color: string | null
+}
+
 export type RequestSample = {
   tenant: string
   priority: number
@@ -63,6 +69,9 @@ export type RunData = {
   runtime: {
     schedulerPolicy: string | null
     chunkedPrefill: boolean | null
+  }
+  routing?: {
+    priorityBands: PriorityBandDefinition[]
   }
   tenants: TenantDefinition[]
   frames: TimelineFrame[]

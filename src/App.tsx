@@ -35,6 +35,7 @@ export default function App() {
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [viewMode, setViewMode] = useState<'diagram' | 'telemetry'>('diagram')
+  const [showHelp, setShowHelp] = useState(false)
   const lastTick = useRef<number | null>(null)
   const runCache = useRef(new Map<string, RunData>())
   const urlPlaybackApplied = useRef(false)
@@ -102,6 +103,15 @@ export default function App() {
     animationFrame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(animationFrame)
   }, [duration, playing, speed])
+
+  useEffect(() => {
+    if (!showHelp) return undefined
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowHelp(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [showHelp])
 
   const chooseSource = async (nextSource: string) => {
     setSource(nextSource)
@@ -173,6 +183,9 @@ export default function App() {
     }
     return [...groups.entries()]
   }, [catalog])
+  const runName = humanizeIdentifier(run.metadata.runId)
+  const scenarioName = humanizeIdentifier(run.metadata.scenario)
+  const showScenario = !runName.toLocaleLowerCase().includes(scenarioName.toLocaleLowerCase())
 
   return (
     <div className="app-shell">
@@ -185,34 +198,59 @@ export default function App() {
           </span>
         </a>
         <div className="run-context">
-          <label>
-            <span>Experiment run</span>
-            <select value={source} disabled={loadingRun} onChange={(event) => void chooseSource(event.target.value)}>
-              <option value="demo">Synthetic demo</option>
-              {loadedRun ? <option value="loaded">Current loaded run</option> : null}
-              {catalogGroups.map(([group, entries]) => (
-                <optgroup label={group} key={group}>
-                  {entries.map((entry) => (
-                    <option value={entry.id} key={entry.id}>
-                      {entry.replayLevel === 'full' ? 'Full replay' : entry.replayLevel === 'queues-and-runtime' ? 'Queues + runtime' : 'Client/partial'} · {entry.runId}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-          <span className="evidence-chip"><i /> {loadingRun ? 'Loading run' : `${catalog.length} runs available`}</span>
+          <select
+            value={source}
+            disabled={loadingRun}
+            aria-label="Run"
+            aria-busy={loadingRun}
+            onChange={(event) => void chooseSource(event.target.value)}
+          >
+            <option value="demo">Synthetic demo</option>
+            {loadedRun ? <option value="loaded">Current loaded run</option> : null}
+            {catalogGroups.map(([group, entries]) => (
+              <optgroup label={group} key={group}>
+                {entries.map((entry) => (
+                  <option value={entry.id} key={entry.id}>
+                    {entry.replayLevel === 'full' ? 'Full replay' : entry.replayLevel === 'queues-and-runtime' ? 'Queues + runtime' : 'Client/partial'} · {entry.runId}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <button className="how-to-button" type="button" onClick={() => setShowHelp(true)}>How to use</button>
         </div>
       </header>
+
+      {showHelp ? (
+        <div className="how-to-scrim" role="presentation" onMouseDown={() => setShowHelp(false)}>
+          <section
+            className="how-to-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="how-to-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <h2 id="how-to-title">How to use</h2>
+              <button type="button" aria-label="Close how to use" onClick={() => setShowHelp(false)}>×</button>
+            </header>
+            <ol>
+              <li><strong>Choose a run.</strong><span>The menu shows available replay artifacts.</span></li>
+              <li><strong>Play or scrub.</strong><span>The chart and components stay on the same moment.</span></li>
+              <li><strong>Read left to right.</strong><span>Traffic → Endpoint Picker → vLLM.</span></li>
+            </ol>
+            <p>Solid values are recorded. Dashed elements explain mechanics.</p>
+          </section>
+        </div>
+      ) : null}
 
       {runError ? <div className="run-error" role="alert">{runError}</div> : null}
 
       <main id="main">
         <section className="run-hero">
           <div className="hero-copy">
-            <p className="eyebrow">Loaded run</p>
-            <h1>{humanizeIdentifier(run.metadata.runId)}</h1>
-            <p className="hero-deck">{humanizeIdentifier(run.metadata.scenario)}</p>
+            <h1>{runName}</h1>
+            {showScenario ? <p className="hero-deck">{scenarioName}</p> : null}
           </div>
           <dl className="run-summary">
             <div><dt>Requests</dt><dd>{formatCount(run.summary.requestCount)}</dd></div>
