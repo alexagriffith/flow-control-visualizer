@@ -2274,20 +2274,6 @@ main {
   background: #2d78b8;
 }
 
-.batch-capacity-strip.capacity-unknown i.active {
-  background: #718d9d;
-}
-
-.system-diagram.is-playing .batch-capacity-strip i.active {
-  animation: batch-turnover 1.8s ease-in-out infinite;
-  animation-delay: calc(var(--cell-index, 0) * 70ms);
-}
-
-@keyframes batch-turnover {
-  0%, 62%, 100% { opacity: 0.72; transform: translateY(0); }
-  18% { opacity: 1; transform: translateY(-1px); }
-}
-
 .batch-capacity-note {
   display: block;
   margin-top: 5px;
@@ -2296,6 +2282,29 @@ main {
   font-size: 6px;
   line-height: 1.35;
   text-transform: uppercase;
+}
+
+.batch-capacity-unknown {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  min-height: 28px;
+  margin-top: 10px;
+  padding: 6px 8px;
+  border: 1px dashed #bdc9d0;
+  border-radius: 4px;
+  color: #71808a;
+  background: #f5f7f8;
+  font-family: var(--mono);
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.batch-capacity-unknown strong {
+  color: #52636d;
+  font-size: 7px;
+  font-weight: 600;
 }
 
 .batch-facts {
@@ -2520,4 +2529,8 @@ main {
   grid-row: 3;
   grid-column: 2;
   justify-self: start;
+}
+
+.recording-mode .timeline-legend {
+  grid-column: 2;
 }

@@ -223,23 +223,21 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
                 <strong>{formatCount(running)} active{maxSequences ? ` / ${formatCount(maxSequences)}` : ''}</strong>
               </header>
 
-              <div
-                className={`batch-capacity-strip ${sequencePercent === null ? 'capacity-unknown' : ''}`}
-                aria-label={sequencePercent === null
-                  ? `${running} active requests; configured request limit not captured`
-                  : `${sequencePercent.toFixed(0)} percent of configured request limit`}
-              >
-                {Array.from({ length: batchCells }, (_, index) => (
-                  <i
-                    key={index}
-                    className={index < activeBatchCells ? 'active' : ''}
-                    style={{ '--cell-index': index } as CSSProperties}
-                  />
-                ))}
-              </div>
-              <small className="batch-capacity-note">
-                {sequencePercent === null ? 'Capacity not captured · motion shows scheduler turnover' : 'Capacity used · motion shows scheduler turnover'}
-              </small>
+              {sequencePercent === null ? (
+                <div className="batch-capacity-unknown" aria-label={`${running} active requests; configured request limit not captured`}>
+                  <span>Configured capacity</span>
+                  <strong>Not captured</strong>
+                </div>
+              ) : (
+                <>
+                  <div className="batch-capacity-strip" aria-label={`${sequencePercent.toFixed(0)} percent of configured request limit`}>
+                    {Array.from({ length: batchCells }, (_, index) => (
+                      <i key={index} className={index < activeBatchCells ? 'active' : ''} />
+                    ))}
+                  </div>
+                  <small className="batch-capacity-note">{formatCount(running)} of {formatCount(maxSequences ?? 0)} active</small>
+                </>
+              )}
               <div className="batch-facts">
                 <span>KV <strong>{formatPercent(pod?.kvCacheUsage ?? 0)}</strong></span>
                 <span>Preemptions <strong>{formatCount(pod?.preemptions ?? 0)}</strong></span>
