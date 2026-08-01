@@ -6,7 +6,12 @@ The UI connects client pressure, Endpoint Picker (EPP) admission queues, and vLL
 batching at the same recorded moment. It shows measured data without inventing request routes or
 batch membership.
 
-![Component flow showing traffic, Endpoint Picker priority queues, and vLLM continuous batching](docs/images/component-flow.jpg)
+## Demo
+
+![Synthetic replay showing traffic, Endpoint Picker queues, and vLLM continuous-batch pressure](docs/images/flow-control-demo.gif)
+
+Ten seconds at 2× speed, generated from the built-in synthetic run. The animation contains no
+experiment data.
 
 ## What It Shows
 
