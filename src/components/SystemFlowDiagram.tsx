@@ -98,12 +98,10 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
   const incomingRps = frame.arrivals / sampleInterval
   const gateHolding = frame.saturation >= 1
   const running = pod?.running ?? 0
+  const waiting = pod?.waiting ?? 0
   const maxSequences = run.limits.maxSequences
-  const sequencePercent = maxSequences ? Math.min(100, (running / maxSequences) * 100) : null
-  const batchCells = 16
-  const activeBatchCells = sequencePercent === null
-    ? (running > 0 ? batchCells : 0)
-    : Math.min(batchCells, Math.max(running > 0 ? 1 : 0, Math.round((sequencePercent / 100) * batchCells)))
+  const batchSlots = maxSequences ?? 128
+  const visibleRunning = Math.min(running, batchSlots)
 
   return (
     <section className={`system-diagram ${playing ? 'is-playing' : ''}`} aria-labelledby="system-diagram-title">
@@ -211,7 +209,11 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
             <div className="scheduler-step">
               <div className="scheduler-rotor" aria-hidden="true"><i /></div>
               <span>Scheduler</span>
-              <strong>{run.runtime.schedulerPolicy?.toUpperCase() ?? 'NOT CAPTURED'}</strong>
+              {run.runtime.schedulerPolicy ? (
+                <strong>{run.runtime.schedulerPolicy.toUpperCase()}</strong>
+              ) : (
+                <strong className="metric-needed"><i aria-hidden="true">!</i> Need metrics</strong>
+              )}
             </div>
 
             <section className="continuous-batch" aria-labelledby="batch-title">
@@ -220,29 +222,36 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
                   <span title="vllm:num_requests_running">Continuous scheduler</span>
                   <h4 id="batch-title">Continuous batch</h4>
                 </div>
-                <strong>{formatCount(running)} active{maxSequences ? ` / ${formatCount(maxSequences)}` : ''}</strong>
+                <strong>{formatCount(running)} running</strong>
               </header>
 
-              {sequencePercent === null ? (
-                <div className="batch-capacity-unknown" aria-label={`${running} active requests; configured request limit not captured`}>
-                  <span>Configured capacity</span>
-                  <strong>Not captured</strong>
-                </div>
-              ) : (
+              {pod ? (
                 <>
-                  <div className="batch-capacity-strip" aria-label={`${sequencePercent.toFixed(0)} percent of configured request limit`}>
-                    {Array.from({ length: batchCells }, (_, index) => (
-                      <i key={index} className={index < activeBatchCells ? 'active' : ''} />
+                  <div
+                    className="batch-capacity-grid"
+                    aria-label={`${running} requests running, ${waiting} waiting; ${batchSlots} slots shown${maxSequences ? ' from the captured configured limit' : ' as a fixed visual scale because the configured limit was not captured'}`}
+                  >
+                    {Array.from({ length: batchSlots }, (_, index) => (
+                      <i key={index} className={index < visibleRunning ? 'active' : ''} />
                     ))}
                   </div>
-                  <small className="batch-capacity-note">{formatCount(running)} of {formatCount(maxSequences ?? 0)} active</small>
+                  <div className="batch-capacity-key">
+                    <span><i /> Running <strong>{formatCount(running)}</strong></span>
+                    <span>Waiting <strong>{formatCount(waiting)}</strong></span>
+                    <small>{maxSequences ? `${formatCount(maxSequences)} configured slots` : '128-slot view · limit not captured'}</small>
+                  </div>
+                  <div className="batch-facts">
+                    <span>KV <strong>{formatPercent(pod.kvCacheUsage)}</strong></span>
+                    <span>Preemptions <strong>{formatCount(pod.preemptions)}</strong></span>
+                    {run.limits.maxBatchedTokens ? <span>Token cap <strong>{formatCount(run.limits.maxBatchedTokens)}</strong></span> : null}
+                  </div>
                 </>
+              ) : (
+                <div className="batch-metrics-needed" role="status">
+                  <i aria-hidden="true">!</i>
+                  <span><strong>Need metrics</strong><small>Running · waiting · KV · preemptions</small></span>
+                </div>
               )}
-              <div className="batch-facts">
-                <span>KV <strong>{formatPercent(pod?.kvCacheUsage ?? 0)}</strong></span>
-                <span>Preemptions <strong>{formatCount(pod?.preemptions ?? 0)}</strong></span>
-                {run.limits.maxBatchedTokens ? <span>Token cap <strong>{formatCount(run.limits.maxBatchedTokens)}</strong></span> : null}
-              </div>
 
               <div className="batch-rebuild-loop">
                 <small>Mechanics, not measured membership</small>
