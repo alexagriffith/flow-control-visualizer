@@ -1255,7 +1255,7 @@ footer {
 
 .component-flow-canvas {
   display: grid;
-  grid-template-columns: minmax(150px, 0.42fr) 58px minmax(500px, 1.55fr) 58px minmax(420px, 1.2fr);
+  grid-template-columns: minmax(170px, 0.46fr) 58px minmax(500px, 1.55fr) 58px minmax(420px, 1.2fr);
   gap: 8px;
   align-items: stretch;
   margin-top: 20px;
@@ -2136,7 +2136,7 @@ body.recording-mode {
 }
 
 .recording-mode .component-flow-canvas {
-  grid-template-columns: minmax(125px, 0.38fr) 44px minmax(480px, 1.55fr) 44px minmax(330px, 1fr);
+  grid-template-columns: minmax(170px, 0.46fr) 44px minmax(480px, 1.55fr) 44px minmax(330px, 1fr);
 }
 
 .recording-mode .component-connector {
@@ -2288,7 +2288,7 @@ main {
 }
 
 .component-flow-canvas {
-  grid-template-columns: minmax(125px, 0.38fr) 44px minmax(480px, 1.55fr) 44px minmax(330px, 1fr);
+  grid-template-columns: minmax(170px, 0.46fr) 44px minmax(480px, 1.55fr) 44px minmax(330px, 1fr);
   gap: 6px;
   margin-top: 14px;
 }
@@ -2930,6 +2930,53 @@ input[type='range'] {
   .request-streams > *,
   .queue-rack > *,
   .pod-grid > * {
+    grid-column: 1;
+  }
+}
+
+/* Traffic is an input rail, not a peer-sized processing stage. Keep it compact
+   beside the wide router and give every tenant the full narrow rail width. */
+.component-flow-canvas > .ingress-component {
+  align-self: center;
+}
+
+.component-flow-canvas .ingress-component .request-streams {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.component-flow-canvas .ingress-component .request-streams > * {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1240px) {
+  .component-flow-canvas > .ingress-component {
+    align-self: stretch;
+  }
+
+  .component-flow-canvas .ingress-component .request-streams {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .component-flow-canvas .ingress-component .request-streams > * {
+    grid-column: span 2;
+  }
+
+  .component-flow-canvas .ingress-component .request-streams > :last-child:nth-child(3n + 1) {
+    grid-column: 1 / -1;
+  }
+
+  .component-flow-canvas .ingress-component .request-streams > :nth-last-child(2):nth-child(3n + 1),
+  .component-flow-canvas .ingress-component .request-streams > :last-child:nth-child(3n + 2) {
+    grid-column: span 3;
+  }
+}
+
+@media (max-width: 700px) {
+  .component-flow-canvas .ingress-component .request-streams {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .component-flow-canvas .ingress-component .request-streams > * {
     grid-column: 1;
   }
 }
