@@ -2598,3 +2598,114 @@ main {
 .recording-mode .timeline-legend {
   grid-column: 2;
 }
+
+/* The playback panel is an instrument panel: live values may repaint, but
+   they must never participate in layout. Keep every row and baseline fixed. */
+.timeline-shell {
+  box-sizing: border-box;
+  height: 105px;
+  grid-template-rows: 68px 15px;
+  align-items: start;
+  overflow: hidden;
+  contain: layout paint;
+}
+
+.timeline-controls,
+.recording-mode .timeline-controls {
+  display: grid;
+  width: 235px;
+  height: 68px;
+  min-width: 235px;
+  max-width: 235px;
+  grid-template-columns: 88px 133px;
+  grid-template-rows: 15px 23px 24px;
+  gap: 3px 14px;
+  align-items: center;
+  overflow: hidden;
+}
+
+.timeline-title,
+.recording-mode .timeline-title {
+  grid-row: 1;
+  grid-column: 1 / -1;
+  height: 15px;
+  line-height: 15px;
+  overflow: hidden;
+}
+
+.play-button,
+.recording-mode .play-button {
+  grid-row: 2 / span 2;
+  grid-column: 1;
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
+  line-height: 1;
+}
+
+.time-readout,
+.recording-mode .time-readout {
+  grid-row: 2;
+  grid-column: 2;
+  height: 23px;
+  line-height: 23px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.speed-control,
+.recording-mode .speed-control {
+  grid-row: 3;
+  grid-column: 2;
+  height: 24px;
+  line-height: 24px;
+  overflow: hidden;
+}
+
+.timeline-plot,
+.recording-mode .timeline-plot {
+  align-self: center;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  margin: 0;
+  overflow: hidden;
+  contain: strict;
+}
+
+.timeline-plot svg {
+  display: block;
+  overflow: hidden;
+}
+
+.timeline-legend,
+.recording-mode .timeline-legend {
+  align-self: start;
+  height: 15px;
+  min-height: 15px;
+  max-height: 15px;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+@media (max-width: 980px) {
+  body:not(.recording-mode) .timeline-shell {
+    height: 176px;
+    grid-template-rows: 68px 52px 15px;
+    row-gap: 10px;
+  }
+
+  body:not(.recording-mode) .timeline-controls {
+    justify-self: start;
+  }
+}
+
+/* Recorded replays show sampled state changes, not decorative motion. Removing
+   per-cell transitions also keeps the chart and labels crisp frame to frame. */
+.recording-mode .system-diagram *,
+.recording-mode .system-diagram *::before,
+.recording-mode .system-diagram *::after {
+  animation: none !important;
+  transition: none !important;
+}
