@@ -6,13 +6,20 @@ import { VllmLayer } from './components/VllmLayer'
 import { SystemFlowDiagram } from './components/SystemFlowDiagram'
 import { demoRun } from './demo-run'
 import { formatCount, humanizeIdentifier } from './lib/format'
+import { isRunData } from './lib/run-data'
 import { frameIndexAtTime } from './lib/timeline'
 import type { RunCatalogEntry, RunData } from './types'
 
-function isRunData(value: unknown): value is RunData {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as Partial<RunData>
-  return candidate.schemaVersion === 1 && Array.isArray(candidate.frames) && candidate.frames.length > 0
+const RUN_CACHE_SIZE = 8
+
+function cacheRun(cache: Map<string, RunData>, id: string, run: RunData): void {
+  cache.delete(id)
+  cache.set(id, run)
+  while (cache.size > RUN_CACHE_SIZE) {
+    const oldest = cache.keys().next().value
+    if (oldest === undefined) break
+    cache.delete(oldest)
+  }
 }
 
 function peakQueueTime(run: RunData): number {
@@ -38,7 +45,9 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false)
   const lastTick = useRef<number | null>(null)
   const runCache = useRef(new Map<string, RunData>())
+  const runRequest = useRef<AbortController | null>(null)
   const urlPlaybackApplied = useRef(false)
+  const helpPanel = useRef<HTMLElement | null>(null)
   const duration = Math.max(run.metadata.duration, run.frames.at(-1)?.time ?? 0)
   const frameIndex = useMemo(() => frameIndexAtTime(run.frames, cursor), [run.frames, cursor])
   const frame = run.frames[frameIndex]
@@ -106,40 +115,71 @@ export default function App() {
 
   useEffect(() => {
     if (!showHelp) return undefined
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShowHelp(false)
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const background = [...document.querySelectorAll<HTMLElement>('.app-shell > :not(.how-to-scrim)')]
+    background.forEach((element) => { element.inert = true })
+    const focusable = () => [...(helpPanel.current?.querySelectorAll<HTMLElement>('button, [href], select, input, [tabindex]:not([tabindex="-1"])') ?? [])]
+    focusable()[0]?.focus()
+
+    const handleDialogKeys = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowHelp(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusable()
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items.at(-1) ?? first
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
-    window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
+    window.addEventListener('keydown', handleDialogKeys)
+    return () => {
+      window.removeEventListener('keydown', handleDialogKeys)
+      background.forEach((element) => { element.inert = false })
+      previousFocus?.focus()
+    }
   }, [showHelp])
 
-  const chooseSource = async (nextSource: string) => {
+  const chooseSource = async (nextSource: string): Promise<RunData | null> => {
+    const previousSource = source
+    runRequest.current?.abort()
+    runRequest.current = null
     setSource(nextSource)
     setPlaying(false)
     setRunError(null)
+    setLoadingRun(false)
 
     if (nextSource === 'demo') {
       setRun(demoRun)
       setCursor(peakQueueTime(demoRun))
-      return
+      return demoRun
     }
 
     if (nextSource === 'loaded' && loadedRun) {
       setRun(loadedRun)
       setCursor(peakQueueTime(loadedRun))
-      return
+      return loadedRun
     }
 
     const cached = runCache.current.get(nextSource)
     if (cached) {
       setRun(cached)
       setCursor(peakQueueTime(cached))
-      return
+      return cached
     }
 
+    const controller = new AbortController()
+    runRequest.current = controller
     setLoadingRun(true)
     try {
-      const response = await fetch(`/api/run?id=${encodeURIComponent(nextSource)}`)
+      const response = await fetch(`/api/run?id=${encodeURIComponent(nextSource)}`, { signal: controller.signal })
       if (!response.ok) throw new Error('This run could not be loaded')
       const data = await response.json() as unknown
       if (!isRunData(data)) throw new Error('This run uses an unsupported artifact format')
@@ -147,13 +187,20 @@ export default function App() {
         ...data,
         runtime: data.runtime ?? { schedulerPolicy: null, chunkedPrefill: null },
       }
-      runCache.current.set(nextSource, normalized)
+      cacheRun(runCache.current, nextSource, normalized)
       setRun(normalized)
       setCursor(peakQueueTime(normalized))
+      return normalized
     } catch (error) {
+      if (controller.signal.aborted) return null
+      setSource(previousSource)
       setRunError(error instanceof Error ? error.message : 'This run could not be loaded')
+      return null
     } finally {
-      setLoadingRun(false)
+      if (runRequest.current === controller) {
+        runRequest.current = null
+        setLoadingRun(false)
+      }
     }
   }
 
@@ -168,8 +215,10 @@ export default function App() {
     const requestedSpeed = Number(params.get('speed'))
     if ([0.5, 1, 2, 4].includes(requestedSpeed)) setSpeed(requestedSpeed)
 
-    void chooseSource(requestedRun).then(() => {
-      if (Number.isFinite(requestedTime) && requestedTime >= 0) setCursor(requestedTime)
+    void chooseSource(requestedRun).then((selectedRun) => {
+      if (!selectedRun) return
+      const selectedDuration = Math.max(selectedRun.metadata.duration, selectedRun.frames.at(-1)?.time ?? 0)
+      if (Number.isFinite(requestedTime) && requestedTime >= 0) setCursor(Math.min(requestedTime, selectedDuration))
       if (params.get('autoplay') === '1') setPlaying(true)
     })
   }, [catalog.length])
@@ -189,16 +238,19 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main">Skip to replay</a>
       <header className="masthead">
-        <a className="brand" href="#main" aria-label="Flow Control Flight Recorder home">
+        <div className="brand" aria-label="Flow Control Flight Recorder">
           <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
           <span>
             <strong>Flow control</strong>
             <small>Flight recorder</small>
           </span>
-        </a>
+        </div>
         <div className="run-context">
           <select
+            name="run"
+            autoComplete="off"
             value={source}
             disabled={loadingRun}
             aria-label="Run"
@@ -217,6 +269,7 @@ export default function App() {
               </optgroup>
             ))}
           </select>
+          <span className="sr-only" role="status" aria-live="polite">{loadingRun ? 'Loading run…' : ''}</span>
           <button className="how-to-button" type="button" onClick={() => setShowHelp(true)}>How to use</button>
         </div>
       </header>
@@ -224,6 +277,7 @@ export default function App() {
       {showHelp ? (
         <div className="how-to-scrim" role="presentation" onMouseDown={() => setShowHelp(false)}>
           <section
+            ref={helpPanel}
             className="how-to-panel"
             role="dialog"
             aria-modal="true"

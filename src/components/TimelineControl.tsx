@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { formatTime } from '../lib/format'
 import { frameIndexAtTime, pointsFor } from '../lib/timeline'
 import type { TimelineFrame } from '../types'
@@ -28,8 +29,14 @@ export function TimelineControl({
   const width = 1000
   const height = 76
   const interval = Math.max(0.001, sampleInterval)
-  const arrivals = pointsFor(frames, width, height, (frame) => frame.arrivals / interval)
-  const completions = pointsFor(frames, width, height, (frame) => frame.completions / interval)
+  const arrivals = useMemo(
+    () => pointsFor(frames, width, height, (frame) => frame.arrivals / interval),
+    [frames, interval],
+  )
+  const completions = useMemo(
+    () => pointsFor(frames, width, height, (frame) => frame.completions / interval),
+    [frames, interval],
+  )
   const cursorX = duration > 0 ? (cursor / duration) * width : 0
   const currentFrame = frames[frameIndexAtTime(frames, cursor)]
   const incomingRps = (currentFrame?.arrivals ?? 0) / interval
@@ -53,7 +60,7 @@ export function TimelineControl({
         </div>
         <label className="speed-control">
           <span>Playback</span>
-          <select value={speed} onChange={(event) => onSpeedChange(Number(event.target.value))}>
+          <select name="playback-speed" autoComplete="off" value={speed} onChange={(event) => onSpeedChange(Number(event.target.value))}>
             <option value={0.5}>0.5×</option>
             <option value={1}>1×</option>
             <option value={2}>2×</option>
@@ -69,6 +76,7 @@ export function TimelineControl({
         </svg>
         <input
           className="timeline-slider"
+          name="run-time"
           type="range"
           min="0"
           max={duration}

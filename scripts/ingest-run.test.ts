@@ -21,6 +21,14 @@ describe('configuredPriorityBands', () => {
       priority_bands: [{ priority: 7 }],
     })).toEqual([{ priority: 7, label: null, color: null }])
   })
+
+  it('rejects display values that could escape the visual contract', () => {
+    expect(configuredPriorityBands({
+      epp_runtime: {
+        priority_bands: [{ priority: 7, label: 'x'.repeat(100), color: 'url(https://example.com)' }],
+      },
+    })).toEqual([{ priority: 7, label: 'x'.repeat(80), color: null }])
+  })
 })
 
 describe('vllmFor', () => {

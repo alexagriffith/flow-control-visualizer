@@ -9,6 +9,8 @@ type CatalogRecord = RunCatalogEntry & {
   runDir: string
 }
 
+const RUN_CACHE_SIZE = 8
+
 async function exists(path: string): Promise<boolean> {
   try {
     await access(path)
@@ -163,7 +165,13 @@ export function runCatalogPlugin(roots: string[]): Plugin {
             schedulerPolicy: null,
             chunkedPrefill: null,
           })
+          runCache.delete(record.id)
           runCache.set(record.id, run)
+          while (runCache.size > RUN_CACHE_SIZE) {
+            const oldest = runCache.keys().next().value
+            if (oldest === undefined) break
+            runCache.delete(oldest)
+          }
           sendJson(response, 200, run)
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unable to load run'

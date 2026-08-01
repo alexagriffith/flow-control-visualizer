@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { formatCount, humanizeIdentifier } from '../lib/format'
 import type { RunData, TimelineFrame } from '../types'
 import { Sparkline } from './Sparkline'
@@ -8,7 +9,7 @@ type ClientLayerProps = {
   frameIndex: number
 }
 
-export function ClientLayer({ run, frame, frameIndex }: ClientLayerProps) {
+export const ClientLayer = memo(function ClientLayer({ run, frame, frameIndex }: ClientLayerProps) {
   return (
     <section className="layer client-layer" aria-labelledby="client-layer-title">
       <div className="layer-index" aria-hidden="true">01</div>
@@ -54,4 +55,4 @@ export function ClientLayer({ run, frame, frameIndex }: ClientLayerProps) {
       </div>
     </section>
   )
-}
+})

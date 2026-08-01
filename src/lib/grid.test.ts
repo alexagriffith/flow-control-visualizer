@@ -7,6 +7,7 @@ describe('balancedGridColumns', () => {
     [32, 16],
     [48, 16],
     [64, 16],
+    [74, 37],
     [128, 32],
   ])('formats %i slots into complete rows of %i', (slots, columns) => {
     expect(balancedGridColumns(slots)).toBe(columns)
@@ -15,5 +16,6 @@ describe('balancedGridColumns', () => {
 
   it('uses one complete row when the slot count is prime', () => {
     expect(balancedGridColumns(13)).toBe(13)
+    expect(balancedGridColumns(73)).toBe(73)
   })
 })

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { formatBytes, formatCount, humanizeIdentifier } from '../lib/format'
 import type { RunData, TimelineFrame } from '../types'
 
@@ -6,7 +7,7 @@ type EppLayerProps = {
   frame: TimelineFrame
 }
 
-export function EppLayer({ run, frame }: EppLayerProps) {
+export const EppLayer = memo(function EppLayer({ run, frame }: EppLayerProps) {
   const maximum = Math.max(1, run.summary.maxEppQueue)
   const sortedQueues = [...frame.queues].sort(
     (left, right) => right.priority - left.priority || left.id.localeCompare(right.id),
@@ -64,4 +65,4 @@ export function EppLayer({ run, frame }: EppLayerProps) {
       </div>
     </section>
   )
-}
+})

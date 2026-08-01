@@ -61,6 +61,14 @@ function numeric(row: CsvRow, key: string): number {
   return Number.isFinite(value) ? value : 0
 }
 
+function nonNegativeCount(row: CsvRow, key: string): number {
+  return Math.max(0, Math.floor(numeric(row, key)))
+}
+
+function ratio(row: CsvRow, key: string): number {
+  return Math.max(0, Math.min(1, numeric(row, key)))
+}
+
 async function readCsv(path: string): Promise<CsvRow[]> {
   return parseCsv(await readFile(path, 'utf8'))
 }
@@ -170,8 +178,8 @@ function queuesFor(
     return {
       id,
       priority: Number.isFinite(recordedPriority) ? recordedPriority : inferredPriority(id),
-      size: numeric(row, sizeKey),
-      bytes: numeric(row, `${QUEUE_BYTES_PREFIX}${suffix}`),
+      size: nonNegativeCount(row, sizeKey),
+      bytes: Math.max(0, numeric(row, `${QUEUE_BYTES_PREFIX}${suffix}`)),
     }
   })
 }
@@ -189,10 +197,10 @@ export function vllmFor(row: CsvRow, runningKeys: string[]): VllmFrame[] {
   if (runningKeys.length === 0) {
     return [{
       pod: 'vllm-aggregate',
-      running: numeric(row, 'vllm:num_requests_running'),
-      waiting: numeric(row, 'vllm:num_requests_waiting'),
-      kvCacheUsage: numeric(row, 'vllm:kv_cache_usage_perc') || numeric(row, 'vllm:gpu_cache_usage_perc'),
-      preemptions: numeric(row, 'vllm:num_preemptions') || numeric(row, 'vllm:num_preemptions_total'),
+      running: nonNegativeCount(row, 'vllm:num_requests_running'),
+      waiting: nonNegativeCount(row, 'vllm:num_requests_waiting'),
+      kvCacheUsage: ratio(row, 'vllm:kv_cache_usage_perc') || ratio(row, 'vllm:gpu_cache_usage_perc'),
+      preemptions: nonNegativeCount(row, 'vllm:num_preemptions') || nonNegativeCount(row, 'vllm:num_preemptions_total'),
       aggregated: true,
     }]
   }
@@ -203,10 +211,10 @@ export function vllmFor(row: CsvRow, runningKeys: string[]): VllmFrame[] {
     const pod = labels.pod ?? labels.instance ?? labels.engine ?? labels.model_name ?? `vllm-${index + 1}`
     return {
       pod,
-      running: numeric(row, runningKey),
-      waiting: numeric(row, `${VLLM_WAITING_PREFIX}${suffix}`),
-      kvCacheUsage: numeric(row, `${VLLM_CACHE_PREFIX}${suffix}`),
-      preemptions: numeric(row, `${VLLM_PREEMPTIONS_PREFIX}${suffix}`),
+      running: nonNegativeCount(row, runningKey),
+      waiting: nonNegativeCount(row, `${VLLM_WAITING_PREFIX}${suffix}`),
+      kvCacheUsage: ratio(row, `${VLLM_CACHE_PREFIX}${suffix}`),
+      preemptions: nonNegativeCount(row, `${VLLM_PREEMPTIONS_PREFIX}${suffix}`),
       aggregated: false,
     }
   })
@@ -220,6 +228,17 @@ function finiteNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function positiveInteger(value: unknown): number | null {
+  const parsed = finiteNumber(value)
+  return parsed !== null && Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+function configuredColor(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const color = value.trim()
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : null
 }
 
 function booleanValue(value: unknown): boolean | null {
@@ -241,8 +260,8 @@ export function configuredPriorityBands(config: Record<string, unknown>): Priori
     if (priority === null) return []
     return [{
       priority,
-      label: typeof band.label === 'string' && band.label.trim() ? band.label.trim() : null,
-      color: typeof band.color === 'string' && band.color.trim() ? band.color.trim() : null,
+      label: typeof band.label === 'string' && band.label.trim() ? band.label.trim().slice(0, 80) : null,
+      color: configuredColor(band.color),
     }]
   })
 }
@@ -311,7 +330,7 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
 
   const frames = metricRows.map((row, index) => ({
     time: frameTimes[index],
-    saturation: numeric(row, 'inference_extension_flow_control_pool_saturation'),
+    saturation: Math.max(0, numeric(row, 'inference_extension_flow_control_pool_saturation')),
     arrivals: counts[index][0],
     completions: counts[index][1],
     tenants: nearestTenantFrames(samplesByTenant, tenants, frameTimes[index]),
@@ -322,8 +341,8 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
   const runId = String(summary.run_id ?? metricRows[0].run_id ?? basename(args.runDir))
   const scenario = String(summary.scenario ?? metricRows[0].scenario ?? 'Unknown scenario')
   const runtimeConfig = objectValue(benchmarkConfig.vllm_runtime)
-  const maxSequences = args.maxSequences ?? finiteNumber(runtimeConfig.max_num_seqs)
-  const maxBatchedTokens = args.maxBatchedTokens ?? finiteNumber(runtimeConfig.max_num_batched_tokens)
+  const maxSequences = positiveInteger(args.maxSequences ?? runtimeConfig.max_num_seqs)
+  const maxBatchedTokens = positiveInteger(args.maxBatchedTokens ?? runtimeConfig.max_num_batched_tokens)
   const schedulerPolicy = args.schedulerPolicy ?? (
     typeof runtimeConfig.scheduler_policy === 'string' && runtimeConfig.scheduler_policy !== 'unknown'
       ? runtimeConfig.scheduler_policy

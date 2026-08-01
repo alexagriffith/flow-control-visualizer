@@ -1,6 +1,7 @@
-import type { CSSProperties } from 'react'
+import { memo, useMemo, type CSSProperties } from 'react'
 import { formatCount, formatPercent, humanizeIdentifier } from '../lib/format'
 import { balancedGridColumns } from '../lib/grid'
+import { MAX_RENDERED_SLOTS, renderableSlotCount } from '../lib/visual-limits'
 import type { RunData, TimelineFrame, VllmFrame } from '../types'
 
 type VllmLayerProps = {
@@ -10,8 +11,10 @@ type VllmLayerProps = {
 
 function PodCard({ pod, run, waitingPeak }: { pod: VllmFrame; run: RunData; waitingPeak: number }) {
   const maximum = run.limits.maxSequences
-  const runningColumns = maximum ? balancedGridColumns(maximum) : 1
-  const waitingColumns = waitingPeak > 0 ? balancedGridColumns(waitingPeak) : 1
+  const renderedMaximum = renderableSlotCount(maximum)
+  const renderedWaitingPeak = renderableSlotCount(waitingPeak)
+  const runningColumns = renderedMaximum ? balancedGridColumns(renderedMaximum) : 1
+  const waitingColumns = renderedWaitingPeak ? balancedGridColumns(renderedWaitingPeak) : 1
 
   return (
     <article className="pod-card">
@@ -27,16 +30,18 @@ function PodCard({ pod, run, waitingPeak }: { pod: VllmFrame; run: RunData; wait
         <span>{formatCount(pod.running)}{maximum ? ` / ${formatCount(maximum)}` : ''} running</span>
       </div>
 
-      {maximum ? (
+      {renderedMaximum ? (
         <div
           className="sequence-grid"
           style={{ '--telemetry-grid-columns': runningColumns } as CSSProperties}
           aria-label={`${pod.running} of ${maximum} configured requests active`}
         >
-          {Array.from({ length: maximum }, (_, index) => (
+          {Array.from({ length: renderedMaximum }, (_, index) => (
             <i key={index} className={index < pod.running ? 'sequence-cell occupied' : 'sequence-cell'} />
           ))}
         </div>
+      ) : maximum ? (
+        <div className="telemetry-config-needed">{formatCount(maximum)} slots · grid hidden above {formatCount(MAX_RENDERED_SLOTS)}</div>
       ) : <div className="telemetry-config-needed">Need config · max_num_seqs</div>}
       <div className="sequence-caption">
         <span>{maximum ? `${formatCount(maximum)} configured slots` : 'Configured limit not captured'}</span>
@@ -46,16 +51,18 @@ function PodCard({ pod, run, waitingPeak }: { pod: VllmFrame; run: RunData; wait
         <h4>Waiting</h4>
         <span>{formatCount(pod.waiting)}</span>
       </div>
-      {waitingPeak > 0 ? (
+      {renderedWaitingPeak ? (
         <div
           className="sequence-grid waiting-grid"
           style={{ '--telemetry-grid-columns': waitingColumns } as CSSProperties}
           aria-label={`${pod.waiting} requests waiting; ${waitingPeak} was the observed run peak and is not a configured limit`}
         >
-          {Array.from({ length: waitingPeak }, (_, index) => (
+          {Array.from({ length: renderedWaitingPeak }, (_, index) => (
             <i key={index} className={index < pod.waiting ? 'sequence-cell occupied' : 'sequence-cell'} />
           ))}
         </div>
+      ) : waitingPeak > 0 ? (
+        <div className="telemetry-config-needed">{formatCount(waitingPeak)} peak · grid hidden above {formatCount(MAX_RENDERED_SLOTS)}</div>
       ) : <div className="waiting-empty">No waiting recorded</div>}
       {waitingPeak > 0 && (
         <div className="sequence-caption"><span>Run peak {formatCount(waitingPeak)} · observed, not a limit</span></div>
@@ -86,7 +93,17 @@ function PodCard({ pod, run, waitingPeak }: { pod: VllmFrame; run: RunData; wait
   )
 }
 
-export function VllmLayer({ run, frame }: VllmLayerProps) {
+export const VllmLayer = memo(function VllmLayer({ run, frame }: VllmLayerProps) {
+  const waitingPeaks = useMemo(() => {
+    const peaks = new Map<string, number>()
+    for (const candidate of run.frames) {
+      for (const pod of candidate.vllm) {
+        peaks.set(pod.pod, Math.max(peaks.get(pod.pod) ?? 0, pod.waiting))
+      }
+    }
+    return peaks
+  }, [run.frames])
+
   return (
     <section className="layer vllm-layer" aria-labelledby="vllm-layer-title">
       <div className="signal-bridge" aria-hidden="true"><span /></div>
@@ -100,11 +117,9 @@ export function VllmLayer({ run, frame }: VllmLayerProps) {
       </header>
       <div className="pod-grid">
         {frame.vllm.map((pod) => {
-          const waitingPeak = Math.max(0, ...run.frames.flatMap((candidate) =>
-            candidate.vllm.filter((item) => item.pod === pod.pod).map((item) => item.waiting)))
-          return <PodCard key={pod.pod} pod={pod} run={run} waitingPeak={waitingPeak} />
+          return <PodCard key={pod.pod} pod={pod} run={run} waitingPeak={waitingPeaks.get(pod.pod) ?? 0} />
         })}
       </div>
     </section>
   )
-}
+})

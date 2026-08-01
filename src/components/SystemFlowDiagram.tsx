@@ -1,6 +1,8 @@
-import type { CSSProperties } from 'react'
+import { memo, type CSSProperties } from 'react'
 import { formatCount, formatPercent, formatTime, humanizeIdentifier } from '../lib/format'
 import { balancedGridColumns } from '../lib/grid'
+import { MAX_RENDERED_SLOTS, renderableSlotCount } from '../lib/visual-limits'
+import { aggregateVllm } from '../lib/vllm'
 import type { QueueFrame, RunData, TimelineFrame } from '../types'
 
 type SystemFlowDiagramProps = {
@@ -92,7 +94,7 @@ function Connector({ label, holding }: { label: string; holding?: boolean }) {
   )
 }
 
-export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProps) {
+export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProps) {
   const priorities = [...new Set([
     ...(run.routing?.priorityBands.map((band) => band.priority) ?? []),
     ...run.tenants.map((tenant) => tenant.priority),
@@ -100,16 +102,16 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
   ])]
     .sort((left, right) => right - left)
   const totalQueued = frame.queues.reduce((total, queue) => total + queue.size, 0)
-  const pod = frame.vllm[0]
+  const pods = frame.vllm
   const sampleInterval = Math.max(0.001, run.metadata.sampleInterval)
   const incomingRps = frame.arrivals / sampleInterval
   const gateHolding = frame.saturation >= 1
-  const running = pod?.running ?? 0
-  const waiting = pod?.waiting ?? 0
+  const { running, waiting, preemptions, peakKvCacheUsage } = aggregateVllm(pods)
   const maxSequences = run.limits.maxSequences
-  const batchSlots = maxSequences ?? 0
-  const visibleRunning = Math.min(running, batchSlots)
-  const batchColumns = maxSequences ? balancedGridColumns(maxSequences) : 1
+  const configuredSlots = maxSequences ? maxSequences * Math.max(1, pods.length) : null
+  const batchSlots = renderableSlotCount(configuredSlots)
+  const visibleRunning = Math.min(running, batchSlots ?? 0)
+  const batchColumns = batchSlots ? balancedGridColumns(batchSlots) : 1
 
   return (
     <section className={`system-diagram ${playing ? 'is-playing' : ''}`} aria-labelledby="system-diagram-title">
@@ -120,7 +122,7 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
         <div className="diagram-live-readout">
           <span><strong>{incomingRps.toFixed(1)}</strong> req/s</span>
           <span><strong>{formatCount(totalQueued)}</strong> EPP queued</span>
-          <span><strong>{formatCount(pod?.waiting ?? 0)}</strong> vLLM waiting</span>
+          <span><strong>{formatCount(waiting)}</strong> vLLM waiting</span>
         </div>
       </header>
       <div className="diagram-provenance">
@@ -195,7 +197,7 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
           <header className="component-titlebar">
             <div>
               <span className="component-kicker">03 · model server</span>
-              <h3 id="runtime-title">vLLM</h3>
+              <h3 id="runtime-title">vLLM{pods.length > 1 ? ` · ${formatCount(pods.length)} pods` : ''}</h3>
             </div>
             <div className="component-state runtime-state"><i /> Sample {formatTime(frame.time)}</div>
           </header>
@@ -222,12 +224,12 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
                 <strong>{formatCount(running)}{maxSequences ? ` / ${formatCount(maxSequences)}` : ''} running</strong>
               </header>
 
-              {pod && maxSequences ? (
+              {pods.length > 0 && batchSlots && configuredSlots ? (
                 <>
                   <div
                     className="batch-capacity-grid"
                     style={{ '--batch-grid-columns': batchColumns } as CSSProperties}
-                    aria-label={`${running} of ${maxSequences} configured sequence slots running; ${waiting} requests waiting`}
+                    aria-label={`${running} of ${configuredSlots} configured sequence slots running across ${pods.length} vLLM source${pods.length === 1 ? '' : 's'}; ${waiting} requests waiting`}
                   >
                     {Array.from({ length: batchSlots }, (_, index) => (
                       <i key={index} className={index < visibleRunning ? 'active' : ''} />
@@ -236,18 +238,23 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
                   <div className="batch-capacity-key">
                     <span><i /> Running <strong>{formatCount(running)}</strong></span>
                     <span>Waiting <strong>{formatCount(waiting)}</strong></span>
-                    <small>{formatCount(maxSequences)} configured slots</small>
+                    <small>{formatCount(configuredSlots)} configured slots</small>
                   </div>
                   <div className="batch-facts">
-                    <span>KV <strong>{formatPercent(pod.kvCacheUsage)}</strong></span>
-                    <span>Preemptions <strong>{formatCount(pod.preemptions)}</strong></span>
+                    <span>{pods.length > 1 ? 'Peak KV' : 'KV'} <strong>{formatPercent(peakKvCacheUsage)}</strong></span>
+                    <span>Preemptions <strong>{formatCount(preemptions)}</strong></span>
                     {run.limits.maxBatchedTokens ? <span>Token cap <strong>{formatCount(run.limits.maxBatchedTokens)}</strong></span> : null}
                   </div>
                 </>
-              ) : !pod ? (
+              ) : pods.length === 0 ? (
                 <div className="batch-metrics-needed" role="status">
                   <i aria-hidden="true">!</i>
                   <span><strong>Need metrics</strong><small>Running · waiting · KV · preemptions</small></span>
+                </div>
+              ) : configuredSlots && configuredSlots > MAX_RENDERED_SLOTS ? (
+                <div className="batch-metrics-needed" role="status">
+                  <i aria-hidden="true">!</i>
+                  <span><strong>{formatCount(configuredSlots)} configured slots</strong><small>Grid hidden above {formatCount(MAX_RENDERED_SLOTS)}</small></span>
                 </div>
               ) : (
                 <div className="batch-metrics-needed" role="status">
@@ -272,4 +279,4 @@ export function SystemFlowDiagram({ run, frame, playing }: SystemFlowDiagramProp
       </div>
     </section>
   )
-}
+})
