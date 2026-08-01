@@ -116,6 +116,7 @@ async function buildCatalog(roots: string[]): Promise<CatalogRecord[]> {
 function sendJson(response: import('node:http').ServerResponse, status: number, value: unknown): void {
   response.statusCode = status
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
+  response.setHeader('Cache-Control', 'no-store')
   response.end(JSON.stringify(value))
 }
 
@@ -175,7 +176,8 @@ export function runCatalogPlugin(roots: string[]): Plugin {
           sendJson(response, 200, run)
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unable to load run'
-          sendJson(response, 500, { error: message })
+          server.config.logger.error(`[flow-control-run-catalog] ${message}`)
+          sendJson(response, 500, { error: 'Unable to load run' })
         }
       })
     },

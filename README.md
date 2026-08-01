@@ -82,6 +82,9 @@ Restart the development server. The selector groups every directory that contain
 
 The API exposes opaque run IDs. It never returns configured filesystem paths.
 
+The run library is local development tooling. Keep Vite bound to localhost when `FLOW_RUN_ROOTS`
+contains private artifacts; do not expose that development server to an untrusted network.
+
 ## Configure a Run
 
 Tenant IDs, priorities, and objectives come from captured client data. Runtime limits and band
