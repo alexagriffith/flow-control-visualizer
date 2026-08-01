@@ -52,7 +52,15 @@ A run directory must contain:
 - `client_samples.csv`
 - `metric_samples.csv`
 
-It may also contain `concurrency_samples.csv`, `summary.json`, and `benchmark_config.json`.
+It may also contain `concurrency_samples.csv`, `traffic_samples.csv`, `summary.json`, and
+`benchmark_config.json`.
+
+`traffic_samples.csv` is optional and is how open-loop runs expose offered load without guessing.
+When present, the ingester preserves target RPS, arrival process, issued/completed requests,
+outstanding requests, send delay, and safety-ceiling state by tenant. Request rows may also include
+optional dense fields such as `request_id`, `planned_arrival_s`, `prompt_tokens`,
+`completion_tokens`, and `tpot_s`; older runs without those fields remain valid and render as
+partial evidence.
 
 ```bash
 npm run ingest -- --run-dir /absolute/path/to/run

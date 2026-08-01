@@ -59,6 +59,7 @@ export const demoRun: RunData = {
     scenario: 'Three-tier saturation demonstration',
     duration: 120,
     sampleInterval: 1,
+    trafficMode: 'closed_loop',
     generatedAt: '2026-07-31T00:00:00.000Z',
     source: 'demo',
   },
@@ -85,6 +86,14 @@ export const demoRun: RunData = {
     metricResolution: '1 second (synthetic)',
     requestCorrelation: false,
     exactBatchMembership: false,
+    capabilities: {
+      hasOpenLoop: false,
+      hasPerRequestTokens: false,
+      hasRequestIds: false,
+      hasTpot: false,
+      hasPerPodVllm: true,
+      hasEppQueueDurations: false,
+    },
     notes: [
       'Queue and pod metrics are synchronized aggregates.',
       'Animated request pulses illustrate flow direction, not individual requests.',

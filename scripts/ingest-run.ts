@@ -61,6 +61,31 @@ function numeric(row: CsvRow, key: string): number {
   return Number.isFinite(value) ? value : 0
 }
 
+function optionalNumber(row: CsvRow, keys: string[]): number | null {
+  for (const key of keys) {
+    if (!(key in row)) continue
+    const parsed = Number(row[key])
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function optionalString(row: CsvRow, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = row[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
+}
+
+function optionalBoolean(row: CsvRow, keys: string[]): boolean | null {
+  const value = optionalString(row, keys)
+  if (value === null) return null
+  if (['1', 'true', 'yes', 'y'].includes(value.toLowerCase())) return true
+  if (['0', 'false', 'no', 'n'].includes(value.toLowerCase())) return false
+  return null
+}
+
 function nonNegativeCount(row: CsvRow, key: string): number {
   return Math.max(0, Math.floor(numeric(row, key)))
 }
@@ -116,38 +141,82 @@ function tenantDefinitions(rows: CsvRow[]): TenantDefinition[] {
 function requestSamples(rows: CsvRow[]): RequestSample[] {
   return rows
     .map((row) => ({
+      requestId: optionalString(row, ['request_id', 'client_request_id']) ?? undefined,
       tenant: row.tenant,
       priority: numeric(row, 'priority'),
       start: numeric(row, 'start_s'),
+      plannedArrival: optionalNumber(row, ['planned_arrival_s']),
+      actualSend: optionalNumber(row, ['actual_send_s', 'send_s']),
+      sendDelay: optionalNumber(row, ['send_delay_s']),
       ttft: numeric(row, 'ttft_s'),
       latency: numeric(row, 'latency_s'),
       status: numeric(row, 'status'),
+      promptTokens: optionalNumber(row, ['prompt_tokens']),
+      completionTokens: optionalNumber(row, ['completion_tokens', 'generated_tokens']),
+      tpot: optionalNumber(row, ['tpot_s', 'time_per_output_token_s']),
+      errorClass: optionalString(row, ['error_class']),
+      retryCount: optionalNumber(row, ['retry_count']),
+      timeout: optionalBoolean(row, ['timeout']),
     }))
     .sort((left, right) => left.start - right.start)
 }
 
+function elapsedFor(row: CsvRow): number {
+  return optionalNumber(row, ['elapsed_s', 'window_start_s', 'time_s']) ?? 0
+}
+
+function rowsByTenant(rows: CsvRow[]): Map<string, CsvRow[]> {
+  const byTenant = new Map<string, CsvRow[]>()
+  for (const row of rows) {
+    if (!row.tenant) continue
+    const samples = byTenant.get(row.tenant) ?? []
+    samples.push(row)
+    byTenant.set(row.tenant, samples)
+  }
+  for (const samples of byTenant.values()) {
+    samples.sort((left, right) => elapsedFor(left) - elapsedFor(right))
+  }
+  return byTenant
+}
+
+function nearestRow(samples: CsvRow[], time: number): CsvRow | undefined {
+  let nearest: CsvRow | undefined
+  let nearestDistance = Number.POSITIVE_INFINITY
+
+  for (const sample of samples) {
+    const distance = Math.abs(elapsedFor(sample) - time)
+    if (distance < nearestDistance) {
+      nearest = sample
+      nearestDistance = distance
+    }
+  }
+
+  return nearest
+}
+
 function nearestTenantFrames(
-  samplesByTenant: Map<string, CsvRow[]>,
+  concurrencyByTenant: Map<string, CsvRow[]>,
+  trafficByTenant: Map<string, CsvRow[]>,
   tenants: TenantDefinition[],
   time: number,
 ): TenantFrame[] {
   return tenants.map((tenant) => {
-    const samples = samplesByTenant.get(tenant.id) ?? []
-    let nearest: CsvRow | undefined
-    let nearestDistance = Number.POSITIVE_INFINITY
-
-    for (const sample of samples) {
-      const distance = Math.abs(numeric(sample, 'elapsed_s') - time)
-      if (distance < nearestDistance) {
-        nearest = sample
-        nearestDistance = distance
-      }
-    }
+    const nearestConcurrency = nearestRow(concurrencyByTenant.get(tenant.id) ?? [], time)
+    const nearestTraffic = nearestRow(trafficByTenant.get(tenant.id) ?? [], time)
 
     return {
       id: tenant.id,
-      targetConcurrency: nearest ? numeric(nearest, 'target_concurrency') : 0,
-      actualInflight: nearest ? numeric(nearest, 'actual_inflight') : 0,
+      targetConcurrency: nearestConcurrency ? numeric(nearestConcurrency, 'target_concurrency') : 0,
+      actualInflight: nearestConcurrency
+        ? numeric(nearestConcurrency, 'actual_inflight')
+        : optionalNumber(nearestTraffic ?? {}, ['outstanding_requests']) ?? 0,
+      targetRps: optionalNumber(nearestTraffic ?? {}, ['target_rps', 'rate_rps']),
+      arrivalProcess: optionalString(nearestTraffic ?? {}, ['arrival_process']),
+      issuedRequests: optionalNumber(nearestTraffic ?? {}, ['issued_requests', 'planned_arrivals']),
+      completedRequests: optionalNumber(nearestTraffic ?? {}, ['completed_requests']),
+      outstandingRequests: optionalNumber(nearestTraffic ?? {}, ['outstanding_requests']),
+      sendDelay: optionalNumber(nearestTraffic ?? {}, ['send_delay_s']),
+      safetyCeilingState: optionalString(nearestTraffic ?? {}, ['safety_ceiling_state']),
     }
   })
 }
@@ -301,9 +370,10 @@ function sampleInterval(times: number[]): number {
 }
 
 export async function ingestRun(args: IngestOptions): Promise<RunData> {
-  const [clientRows, concurrencyRows, metricRows, summary, benchmarkConfig] = await Promise.all([
+  const [clientRows, concurrencyRows, trafficRows, metricRows, summary, benchmarkConfig] = await Promise.all([
     readCsv(resolve(args.runDir, 'client_samples.csv')),
     readCsvOptional(resolve(args.runDir, 'concurrency_samples.csv')),
+    readCsvOptional(resolve(args.runDir, 'traffic_samples.csv')),
     readCsv(resolve(args.runDir, 'metric_samples.csv')),
     readSummary(resolve(args.runDir, 'summary.json')),
     readBenchmarkConfig(args.runDir),
@@ -314,12 +384,8 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
   const tenants = tenantDefinitions(clientRows)
   const tenantById = new Map(tenants.map((tenant) => [tenant.id, tenant]))
   const requests = requestSamples(clientRows)
-  const samplesByTenant = new Map<string, CsvRow[]>()
-  for (const row of concurrencyRows) {
-    const samples = samplesByTenant.get(row.tenant) ?? []
-    samples.push(row)
-    samplesByTenant.set(row.tenant, samples)
-  }
+  const concurrencyByTenant = rowsByTenant(concurrencyRows)
+  const trafficByTenant = rowsByTenant(trafficRows)
 
   const queueKeys = Object.keys(metricRows[0])
     .filter((key) => key.startsWith(QUEUE_SIZE_PREFIX))
@@ -333,7 +399,7 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
     saturation: Math.max(0, numeric(row, 'inference_extension_flow_control_pool_saturation')),
     arrivals: counts[index][0],
     completions: counts[index][1],
-    tenants: nearestTenantFrames(samplesByTenant, tenants, frameTimes[index]),
+    tenants: nearestTenantFrames(concurrencyByTenant, trafficByTenant, tenants, frameTimes[index]),
     queues: queuesFor(row, queueKeys, tenantById),
     vllm: vllmFor(row, vllmRunningKeys),
   }))
@@ -349,7 +415,16 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
       : null
   )
   const chunkedPrefill = args.chunkedPrefill ?? booleanValue(runtimeConfig.chunked_prefill)
-  const hasRequestIds = clientRows.some((row) => Boolean(row.client_request_id))
+  const hasRequestIds = clientRows.some((row) => Boolean(row.client_request_id || row.request_id))
+  const hasOpenLoop = trafficRows.some((row) => optionalString(row, ['arrival_process'])?.toLowerCase().includes('poisson'))
+  const hasPerRequestTokens = clientRows.some((row) => (
+    optionalNumber(row, ['prompt_tokens']) !== null
+    || optionalNumber(row, ['completion_tokens', 'generated_tokens']) !== null
+  ))
+  const hasTpot = clientRows.some((row) => optionalNumber(row, ['tpot_s', 'time_per_output_token_s']) !== null)
+  const hasEppQueueDurations = metricRows.some((row) => Object.keys(row).some((key) => (
+    key.includes('queue_duration') || key.includes('queue_time') || key.includes('ntpot')
+  )))
   const configuredBands = configuredPriorityBands(benchmarkConfig)
   const observedPriorities = [...new Set([
     ...configuredBands.map((band) => band.priority),
@@ -369,6 +444,7 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
       scenario,
       duration: Number(summary.duration_s ?? frameTimes.at(-1) ?? 0),
       sampleInterval: sampleInterval(frameTimes),
+      trafficMode: trafficRows.length > 0 ? (hasOpenLoop ? 'open_loop_poisson' : 'unknown') : 'closed_loop',
       generatedAt: new Date().toISOString(),
       source: 'ingested',
     },
@@ -395,6 +471,14 @@ export async function ingestRun(args: IngestOptions): Promise<RunData> {
       metricResolution: `${sampleInterval(frameTimes).toFixed(2)} seconds`,
       requestCorrelation: hasRequestIds,
       exactBatchMembership: false,
+      capabilities: {
+        hasOpenLoop,
+        hasPerRequestTokens,
+        hasRequestIds,
+        hasTpot,
+        hasPerPodVllm: vllmRunningKeys.length > 0,
+        hasEppQueueDurations,
+      },
       notes: [
         hasRequestIds
           ? 'Client request IDs and token event timing are available; engine-step membership is not.'
