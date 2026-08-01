@@ -12,18 +12,35 @@ export type PriorityBandDefinition = {
 }
 
 export type RequestSample = {
+  requestId?: string
   tenant: string
   priority: number
   start: number
+  plannedArrival?: number | null
+  actualSend?: number | null
+  sendDelay?: number | null
   ttft: number
   latency: number
   status: number
+  promptTokens?: number | null
+  completionTokens?: number | null
+  tpot?: number | null
+  errorClass?: string | null
+  retryCount?: number | null
+  timeout?: boolean | null
 }
 
 export type TenantFrame = {
   id: string
   targetConcurrency: number
   actualInflight: number
+  targetRps?: number | null
+  arrivalProcess?: string | null
+  issuedRequests?: number | null
+  completedRequests?: number | null
+  outstandingRequests?: number | null
+  sendDelay?: number | null
+  safetyCeilingState?: string | null
 }
 
 export type QueueFrame = {
@@ -59,6 +76,7 @@ export type RunData = {
     scenario: string
     duration: number
     sampleInterval: number
+    trafficMode?: 'closed_loop' | 'open_loop_poisson' | 'unknown'
     generatedAt: string
     source: 'demo' | 'ingested'
   }
@@ -87,6 +105,14 @@ export type RunData = {
     metricResolution: string
     requestCorrelation: boolean
     exactBatchMembership: boolean
+    capabilities?: {
+      hasOpenLoop: boolean
+      hasPerRequestTokens: boolean
+      hasRequestIds: boolean
+      hasTpot: boolean
+      hasPerPodVllm: boolean
+      hasEppQueueDurations: boolean
+    }
     notes: string[]
   }
 }

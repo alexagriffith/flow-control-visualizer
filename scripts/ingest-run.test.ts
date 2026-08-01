@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { configuredPriorityBands, vllmFor } from './ingest-run'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { configuredPriorityBands, ingestRun, vllmFor } from './ingest-run'
 
 describe('configuredPriorityBands', () => {
   it('preserves arbitrary configured bands, labels, and colors', () => {
@@ -63,5 +66,47 @@ describe('vllmFor', () => {
       preemptions: 4,
       aggregated: false,
     }])
+  })
+})
+
+describe('ingestRun', () => {
+  it('preserves optional open-loop traffic and per-request token evidence', async () => {
+    const runDir = await mkdtemp(join(tmpdir(), 'flow-run-'))
+    await writeFile(join(runDir, 'client_samples.csv'), [
+      'run_id,scenario,tenant,priority,objective,status,start_s,ttft_s,latency_s,request_id,planned_arrival_s,prompt_tokens,completion_tokens,tpot_s',
+      'run-1,poisson-proof,premium-a,100,premium,200,0.5,0.1,0.9,req-1,0.45,512,128,0.0063',
+    ].join('\n'))
+    await writeFile(join(runDir, 'traffic_samples.csv'), [
+      'elapsed_s,tenant,target_rps,arrival_process,issued_requests,completed_requests,outstanding_requests,send_delay_s,safety_ceiling_state',
+      '0.5,premium-a,12,poisson,1,0,1,0.05,ok',
+    ].join('\n'))
+    await writeFile(join(runDir, 'metric_samples.csv'), [
+      'run_id,scenario,elapsed_s,inference_extension_flow_control_pool_saturation,vllm:num_requests_running,vllm:num_requests_waiting',
+      'run-1,poisson-proof,0.5,1.2,10,2',
+    ].join('\n'))
+
+    const run = await ingestRun({
+      runDir,
+      output: join(runDir, 'run.json'),
+      maxSequences: null,
+      maxBatchedTokens: null,
+      schedulerPolicy: null,
+      chunkedPrefill: null,
+    })
+
+    expect(run.metadata.trafficMode).toBe('open_loop_poisson')
+    expect(run.evidence.capabilities).toMatchObject({
+      hasOpenLoop: true,
+      hasPerRequestTokens: true,
+      hasRequestIds: true,
+      hasTpot: true,
+    })
+    expect(run.frames[0].tenants[0]).toMatchObject({
+      targetRps: 12,
+      arrivalProcess: 'poisson',
+      outstandingRequests: 1,
+      sendDelay: 0.05,
+      safetyCeilingState: 'ok',
+    })
   })
 })
