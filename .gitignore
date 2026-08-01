@@ -7,3 +7,9 @@ coverage/
 playwright-report/
 test-results/
 .env.local
+
+# Local AI-assistant instructions must not ship with the public repository.
+/AGENTS.md
+/CLAUDE.md
+/.claude/
+/.codex/
