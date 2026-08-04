@@ -112,6 +112,10 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
   const batchSlots = renderableSlotCount(configuredSlots)
   const visibleRunning = Math.min(running, batchSlots ?? 0)
   const batchColumns = batchSlots ? balancedGridColumns(batchSlots) : 1
+  const waitingPeak = Math.max(run.summary.maxVllmWaiting, waiting)
+  const waitingSlots = renderableSlotCount(waitingPeak)
+  const visibleWaiting = Math.min(waiting, waitingSlots ?? 0)
+  const waitingColumns = waitingSlots ? balancedGridColumns(waitingSlots) : 1
 
   return (
     <section className={`system-diagram ${playing ? 'is-playing' : ''}`} aria-labelledby="system-diagram-title">
@@ -237,9 +241,38 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
                   </div>
                   <div className="batch-capacity-key">
                     <span><i /> Running <strong>{formatCount(running)}</strong></span>
-                    <span>Waiting <strong>{formatCount(waiting)}</strong></span>
                     <small>{formatCount(configuredSlots)} configured slots</small>
                   </div>
+                  <section className="vllm-waiting-queue" aria-labelledby="waiting-queue-title">
+                    <header>
+                      <div>
+                        <span title="vllm:num_requests_waiting">Local queue</span>
+                        <h5 id="waiting-queue-title">Waiting</h5>
+                      </div>
+                      <strong>{formatCount(waiting)} waiting</strong>
+                    </header>
+                    {waitingSlots ? (
+                      <>
+                        <div
+                          className="waiting-capacity-grid"
+                          style={{ '--waiting-grid-columns': waitingColumns } as CSSProperties}
+                          aria-label={`${waiting} requests waiting; ${waitingPeak} was the observed run peak and is not a configured limit`}
+                        >
+                          {Array.from({ length: waitingSlots }, (_, index) => (
+                            <i key={index} className={index < visibleWaiting ? 'active' : ''} />
+                          ))}
+                        </div>
+                        <div className="waiting-capacity-key">
+                          <span><i /> Waiting <strong>{formatCount(waiting)}</strong></span>
+                          <small>Run peak {formatCount(waitingPeak)} · observed</small>
+                        </div>
+                      </>
+                    ) : waitingPeak > MAX_RENDERED_SLOTS ? (
+                      <div className="waiting-queue-empty">Peak {formatCount(waitingPeak)} · grid hidden</div>
+                    ) : (
+                      <div className="waiting-queue-empty">No waiting recorded</div>
+                    )}
+                  </section>
                   <div className="batch-facts">
                     <span>{pods.length > 1 ? 'Peak KV' : 'KV'} <strong>{formatPercent(peakKvCacheUsage)}</strong></span>
                     <span>Preemptions <strong>{formatCount(preemptions)}</strong></span>

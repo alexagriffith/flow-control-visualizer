@@ -2440,6 +2440,114 @@ main {
   font: inherit;
 }
 
+.vllm-waiting-queue {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid #d9e1e5;
+}
+
+.vllm-waiting-queue > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vllm-waiting-queue > header span {
+  display: block;
+  color: #9b654e;
+  font-family: var(--mono);
+  font-size: 6px;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.vllm-waiting-queue > header h5 {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.vllm-waiting-queue > header > strong {
+  color: #b64b27;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
+.waiting-capacity-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--waiting-grid-columns), minmax(0, 1fr));
+  grid-auto-rows: 5px;
+  gap: 2px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px;
+  border: 1px solid #e4c9bd;
+  border-radius: 4px;
+  background: #fff7f3;
+}
+
+.waiting-capacity-grid > i {
+  min-width: 0;
+  height: 5px;
+  border-radius: 1px;
+  background: #eddcd5;
+  transition: background-color 300ms ease, opacity 300ms ease;
+}
+
+.waiting-capacity-grid > i.active {
+  background: #df6a3f;
+}
+
+.waiting-capacity-key {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  color: #8d6f62;
+  font-family: var(--mono);
+  font-size: 6px;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.waiting-capacity-key span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.waiting-capacity-key span > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: #df6a3f;
+}
+
+.waiting-capacity-key strong {
+  color: var(--ink);
+}
+
+.waiting-capacity-key small {
+  margin-left: auto;
+  color: #9b654e;
+  font: inherit;
+}
+
+.waiting-queue-empty {
+  margin-top: 6px;
+  padding: 7px;
+  border: 1px dashed #d9c9c2;
+  border-radius: 4px;
+  color: #8d6f62;
+  background: #fff9f6;
+  font-family: var(--mono);
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
 .batch-metrics-needed {
   display: flex;
   gap: 8px;
