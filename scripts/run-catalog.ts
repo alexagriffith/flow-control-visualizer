@@ -9,6 +9,11 @@ type CatalogRecord = RunCatalogEntry & {
   runDir: string
 }
 
+type RunLabel = {
+  displayName: string
+  scenario: string | null
+}
+
 const RUN_CACHE_SIZE = 8
 
 async function exists(path: string): Promise<boolean> {
@@ -47,6 +52,28 @@ async function findRunDirectories(root: string): Promise<string[]> {
   return found
 }
 
+export async function readRunLabels(root: string): Promise<Map<string, RunLabel>> {
+  try {
+    const document = JSON.parse(await readFile(resolve(root, 'RUN-LABELS.json'), 'utf8')) as unknown
+    if (!document || typeof document !== 'object') return new Map()
+    const labels = (document as Record<string, unknown>).labels
+    if (!labels || typeof labels !== 'object') return new Map()
+
+    return new Map(Object.entries(labels as Record<string, unknown>).flatMap(([folder, value]) => {
+      if (!value || typeof value !== 'object') return []
+      const record = value as Record<string, unknown>
+      const displayName = typeof record.display_name === 'string' ? record.display_name.trim() : ''
+      if (!displayName) return []
+      const scenario = typeof record.scenario === 'string' && record.scenario.trim()
+        ? record.scenario.trim()
+        : null
+      return [[folder, { displayName, scenario }]]
+    }))
+  } catch {
+    return new Map()
+  }
+}
+
 function requestCountFrom(summary: Record<string, unknown>): number {
   if (!Array.isArray(summary.client_summary)) return 0
   return summary.client_summary.reduce((total: number, tenant) => {
@@ -56,7 +83,11 @@ function requestCountFrom(summary: Record<string, unknown>): number {
   }, 0)
 }
 
-async function catalogRecord(root: string, runDir: string): Promise<CatalogRecord> {
+async function catalogRecord(
+  root: string,
+  runDir: string,
+  runLabels: Map<string, RunLabel>,
+): Promise<CatalogRecord> {
   let summary: Record<string, unknown> = {}
   try {
     summary = JSON.parse(await readFile(resolve(runDir, 'summary.json'), 'utf8')) as Record<string, unknown>
@@ -81,8 +112,11 @@ async function catalogRecord(root: string, runDir: string): Promise<CatalogRecor
   const relativeParent = relative(root, dirname(runDir))
   const groupParts = relativeParent.split(sep).filter(Boolean).slice(-2)
   const group = groupParts.length > 0 ? groupParts.join(' / ') : basename(root)
-  const runId = String(summary.run_id ?? basename(runDir))
-  const scenario = String(summary.scenario ?? runId)
+  const topLevelFolder = relative(root, runDir).split(sep).filter(Boolean)[0] ?? ''
+  const label = runLabels.get(topLevelFolder)
+  const rawRunId = String(summary.run_id ?? basename(runDir))
+  const runId = label?.displayName ?? rawRunId
+  const scenario = label?.scenario ?? String(summary.scenario ?? rawRunId)
   const duration = Number(summary.duration_s ?? 0)
   const id = createHash('sha1').update(runDir).digest('hex').slice(0, 14)
 
@@ -103,8 +137,11 @@ async function catalogRecord(root: string, runDir: string): Promise<CatalogRecor
 async function buildCatalog(roots: string[]): Promise<CatalogRecord[]> {
   const records = await Promise.all(
     roots.map(async (root) => {
-      const directories = await findRunDirectories(root)
-      return Promise.all(directories.map((runDir) => catalogRecord(root, runDir)))
+      const [directories, runLabels] = await Promise.all([
+        findRunDirectories(root),
+        readRunLabels(root),
+      ])
+      return Promise.all(directories.map((runDir) => catalogRecord(root, runDir, runLabels)))
     }),
   )
 
@@ -158,7 +195,7 @@ export function runCatalogPlugin(roots: string[]): Plugin {
             return
           }
 
-          const run = await ingestRun({
+          const ingestedRun = await ingestRun({
             runDir: record.runDir,
             output: '',
             maxSequences: null,
@@ -166,6 +203,14 @@ export function runCatalogPlugin(roots: string[]): Plugin {
             schedulerPolicy: null,
             chunkedPrefill: null,
           })
+          const run = {
+            ...ingestedRun,
+            metadata: {
+              ...ingestedRun.metadata,
+              runId: record.runId,
+              scenario: record.scenario,
+            },
+          }
           runCache.delete(record.id)
           runCache.set(record.id, run)
           while (runCache.size > RUN_CACHE_SIZE) {
