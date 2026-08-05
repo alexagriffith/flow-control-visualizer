@@ -44,7 +44,7 @@ export function TimelineControl({
   return (
     <section className="timeline-shell" aria-label="Run playback">
       <div className="timeline-controls">
-        <span className="timeline-title">Requests/sec</span>
+        <span className="timeline-title">RPS</span>
         <button
           className="play-button"
           type="button"
@@ -59,7 +59,7 @@ export function TimelineControl({
           <span>/ {formatTime(duration)}</span>
         </div>
         <label className="speed-control">
-          <span>Playback</span>
+          <span>Speed</span>
           <select name="playback-speed" autoComplete="off" value={speed} onChange={(event) => onSpeedChange(Number(event.target.value))}>
             <option value={0.5}>0.5×</option>
             <option value={1}>1×</option>
@@ -88,7 +88,7 @@ export function TimelineControl({
       </div>
       <div className="timeline-legend" aria-hidden="true">
         <span className="request-rate-now"><strong>{incomingRps.toFixed(1)}</strong> now</span>
-        <span><i className="legend-line arrivals" /> Incoming</span>
+        <span><i className="legend-line arrivals" /> Arrivals</span>
         <span><i className="legend-line completions" /> Completed</span>
       </div>
     </section>

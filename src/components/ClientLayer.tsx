@@ -14,14 +14,7 @@ export const ClientLayer = memo(function ClientLayer({ run, frame, frameIndex }:
     <section className="layer client-layer" aria-labelledby="client-layer-title">
       <div className="layer-index" aria-hidden="true">01</div>
       <header className="layer-header">
-        <div>
-          <p className="eyebrow">Pressure enters</p>
-          <h2 id="client-layer-title">Client traffic</h2>
-        </div>
-        <div className="layer-live-stats">
-          <span><strong>{frame.arrivals}</strong> arrivals</span>
-          <span><strong>{frame.completions}</strong> completed</span>
-        </div>
+        <h2 id="client-layer-title">Traffic</h2>
       </header>
       <div className="tenant-grid">
         {run.tenants.map((tenant) => {
@@ -35,7 +28,7 @@ export const ClientLayer = memo(function ClientLayer({ run, frame, frameIndex }:
                 <span className="tenant-signal" aria-hidden="true" />
                 <div>
                   <h3>{humanizeIdentifier(tenant.id)}</h3>
-                  <p>Priority {tenant.priority} · {humanizeIdentifier(tenant.objective)}</p>
+                  <p>P{tenant.priority}</p>
                 </div>
                 <strong className="inflight-value">{formatCount(current?.actualInflight ?? 0)}</strong>
               </div>
@@ -46,7 +39,6 @@ export const ClientLayer = memo(function ClientLayer({ run, frame, frameIndex }:
                 label={`${humanizeIdentifier(tenant.id)} in-flight concurrency over time`}
               />
               <div className="tenant-card-foot">
-                <span>Actual in flight</span>
                 <span>Target {formatCount(current?.targetConcurrency ?? 0)}</span>
               </div>
             </article>

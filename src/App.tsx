@@ -289,11 +289,11 @@ export default function App() {
               <button type="button" aria-label="Close how to use" onClick={() => setShowHelp(false)}>×</button>
             </header>
             <ol>
-              <li><strong>Choose a run.</strong><span>The menu shows available replay artifacts.</span></li>
-              <li><strong>Play or scrub.</strong><span>The chart and components stay on the same moment.</span></li>
-              <li><strong>Read left to right.</strong><span>Traffic → Endpoint Picker → vLLM.</span></li>
+              <li><strong>Choose a run.</strong></li>
+              <li><strong>Play or scrub.</strong></li>
+              <li><strong>Follow the path.</strong><span>Traffic → Endpoint Picker → vLLM.</span></li>
             </ol>
-            <p>Solid values are recorded. Dashed elements explain mechanics.</p>
+            <p>Solid = recorded. Dashed = mechanism.</p>
           </section>
         </div>
       ) : null}
@@ -333,10 +333,10 @@ export default function App() {
 
         <div className="view-switcher" role="group" aria-label="Visualization mode">
           <button type="button" aria-pressed={viewMode === 'diagram'} onClick={() => setViewMode('diagram')}>
-            Component flow
+            Flow
           </button>
           <button type="button" aria-pressed={viewMode === 'telemetry'} onClick={() => setViewMode('telemetry')}>
-            Telemetry
+            Metrics
           </button>
         </div>
 

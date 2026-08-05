@@ -1,5 +1,5 @@
 import { memo, type CSSProperties } from 'react'
-import { formatCount, formatPercent, formatTime, humanizeIdentifier } from '../lib/format'
+import { formatCount, formatPercent, humanizeIdentifier } from '../lib/format'
 import { balancedGridColumns } from '../lib/grid'
 import { MAX_RENDERED_SLOTS, renderableSlotCount } from '../lib/visual-limits'
 import { aggregateVllm } from '../lib/vllm'
@@ -11,15 +11,18 @@ type SystemFlowDiagramProps = {
   playing: boolean
 }
 
+function compactFlowName(id: string): string {
+  return humanizeIdentifier(id).replace(/\btenant\b/gi, '').replace(/\s+/g, ' ').trim()
+}
+
 function QueueDots({ queue }: { queue: QueueFrame }) {
   const visibleDots = Math.min(12, queue.size)
   return (
-    <div className="diagram-queue-dots" aria-hidden="true">
-      {Array.from({ length: visibleDots }, (_, index) => (
-        <i key={index} style={{ '--dot-index': index } as CSSProperties} />
+    <div className="diagram-queue-dots" aria-label={`${queue.size} waiting`}>
+      {Array.from({ length: 12 }, (_, index) => (
+        <i key={index} className={index < visibleDots ? 'active' : ''} aria-hidden="true" />
       ))}
       {queue.size > visibleDots ? <span>+{formatCount(queue.size - visibleDots)}</span> : null}
-      {queue.size === 0 ? <em>empty</em> : null}
     </div>
   )
 }
@@ -38,8 +41,6 @@ function PriorityBand({
   run: RunData
 }) {
   const queued = queues.reduce((total, queue) => total + queue.size, 0)
-  const activeQueues = queues.filter((queue) => queue.size > 0)
-  const emptyQueueCount = queues.length - activeQueues.length
   return (
     <section
       className="priority-band"
@@ -49,12 +50,15 @@ function PriorityBand({
       <header>
         <div>
           <strong>P{priority}</strong>
-          <span>{label ?? 'Priority'}</span>
+          {label ? <span>{label}</span> : null}
         </div>
-        <b>{formatCount(queued)} queued</b>
+        <b aria-label={`${queued} queued`}>{formatCount(queued)}</b>
       </header>
-      <div className="fairness-queues">
-        {activeQueues.map((queue) => {
+      <div
+        className="fairness-queues"
+        style={{ '--flow-count': Math.max(1, queues.length) } as CSSProperties}
+      >
+        {queues.map((queue) => {
           const tenant = run.tenants.find((candidate) => candidate.id === queue.id)
           return (
             <div
@@ -63,30 +67,23 @@ function PriorityBand({
               style={{ '--flow-color': tenant?.color ?? '#71808b' } as CSSProperties}
               aria-label={`${humanizeIdentifier(queue.id)}, ${queue.size} requests waiting`}
             >
-              <span>{humanizeIdentifier(queue.id)}</span>
+              <div className="queue-card-label">
+                <span>{humanizeIdentifier(queue.id)}</span>
+                <strong>{formatCount(queue.size)}</strong>
+              </div>
               <QueueDots queue={queue} />
-              <small>{formatCount(queue.size)} queued</small>
             </div>
           )
         })}
-        {activeQueues.length === 0 ? (
-          <div className="queue-empty-summary">
-            <strong>{queues.length > 0 ? 'No queued requests' : 'No flows recorded'}</strong>
-            {queues.length > 0 ? <span>{formatCount(queues.length)} empty {queues.length === 1 ? 'queue' : 'queues'}</span> : null}
-          </div>
-        ) : emptyQueueCount > 0 ? (
-          <span className="empty-queue-count">+{formatCount(emptyQueueCount)} empty</span>
-        ) : null}
       </div>
-      <div className="band-dispatch" aria-hidden="true"><i /><span>eligible</span></div>
     </section>
   )
 }
 
-function Connector({ label, holding }: { label: string; holding?: boolean }) {
+function Connector({ label, holding, visibleLabel = true }: { label: string; holding?: boolean; visibleLabel?: boolean }) {
   return (
     <div className={`component-connector ${holding ? 'connector-holding' : ''}`} aria-label={label}>
-      <span>{label}</span>
+      {visibleLabel ? <span>{label}</span> : null}
       <div className="connector-track" aria-hidden="true">
         <b>→</b>
       </div>
@@ -101,10 +98,7 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
     ...frame.queues.map((queue) => queue.priority),
   ])]
     .sort((left, right) => right - left)
-  const totalQueued = frame.queues.reduce((total, queue) => total + queue.size, 0)
   const pods = frame.vllm
-  const sampleInterval = Math.max(0.001, run.metadata.sampleInterval)
-  const incomingRps = frame.arrivals / sampleInterval
   const gateHolding = frame.saturation >= 1
   const { running, waiting, preemptions, peakKvCacheUsage } = aggregateVllm(pods)
   const maxSequences = run.limits.maxSequences
@@ -116,37 +110,39 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
   const waitingSlots = renderableSlotCount(waitingPeak)
   const visibleWaiting = Math.min(waiting, waitingSlots ?? 0)
   const waitingColumns = waitingSlots ? balancedGridColumns(waitingSlots) : 1
+  const queuesByTenant = new Map(frame.queues.map((queue) => [`${queue.priority}:${queue.id}`, queue]))
+  const queuesForPriority = (priority: number): QueueFrame[] => run.tenants
+    .filter((tenant) => tenant.priority === priority)
+    .map((tenant) => queuesByTenant.get(`${priority}:${tenant.id}`) ?? {
+      id: tenant.id,
+      priority,
+      size: 0,
+      bytes: 0,
+    })
 
   return (
     <section className={`system-diagram ${playing ? 'is-playing' : ''}`} aria-labelledby="system-diagram-title">
       <header className="system-diagram-header">
-        <div>
-          <h2 id="system-diagram-title">Request path</h2>
-        </div>
-        <div className="diagram-live-readout">
-          <span><strong>{incomingRps.toFixed(1)}</strong> req/s</span>
-          <span><strong>{formatCount(totalQueued)}</strong> EPP queued</span>
-          <span><strong>{formatCount(waiting)}</strong> vLLM waiting</span>
-        </div>
+        <h2 id="system-diagram-title">Request path</h2>
       </header>
-      <div className="diagram-provenance">
-        <span><i className="recorded-mark" /> Run data</span>
-        <span><i className="concept-mark" /> Mechanics only</span>
-      </div>
 
       <div className="component-flow-canvas">
         <section className="ingress-component" aria-label="Client request ingress">
           <header>
-            <span className="component-kicker">01</span>
             <h3>Traffic</h3>
           </header>
-          <div className="request-streams">
+          <div
+            className="request-streams"
+            style={{ '--tenant-count': Math.max(1, run.tenants.length) } as CSSProperties}
+          >
             {run.tenants.map((tenant) => {
               const current = frame.tenants.find((candidate) => candidate.id === tenant.id)
+              const name = humanizeIdentifier(tenant.id)
+              const inFlight = current?.actualInflight ?? 0
               return (
                 <div className="request-stream" key={tenant.id} style={{ '--flow-color': tenant.color } as CSSProperties}>
-                  <span>{humanizeIdentifier(tenant.id)}</span>
-                  <small>{formatCount(current?.actualInflight ?? 0)} in flight</small>
+                  <span title={name}>{compactFlowName(tenant.id)}</span>
+                  <strong aria-label={`${formatCount(inFlight)} in flight`}>{formatCount(inFlight)}</strong>
                 </div>
               )
             })}
@@ -158,12 +154,11 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
         <section className="endpoint-picker-component" aria-labelledby="endpoint-picker-title">
           <header className="component-titlebar">
             <div>
-              <span className="component-kicker">02 · llm-d router</span>
               <h3 id="endpoint-picker-title">Endpoint Picker</h3>
             </div>
             <div className="component-state">
               <i className={gateHolding ? 'state-holding' : 'state-open'} />
-              {gateHolding ? 'Admission holding' : 'Dispatching'}
+              {gateHolding ? 'Holding' : 'Open'}
             </div>
           </header>
 
@@ -176,34 +171,31 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
                 color={run.routing?.priorityBands.find((band) => band.priority === priority)?.color
                   ?? run.tenants.find((tenant) => tenant.priority === priority)?.color
                   ?? '#71808b'}
-                queues={frame.queues.filter((queue) => queue.priority === priority)}
+                queues={queuesForPriority(priority)}
                 run={run}
               />
             ))}
           </div>
 
           <div className="epp-decision-stage">
-            <div>
-              <span>Arbitration</span>
-              <strong>Next eligible flow</strong>
-            </div>
+            <strong className="priority-order" aria-label="Priority order">
+              {priorities.map((priority) => `P${priority}`).join(' → ')}
+            </strong>
             <div className={`saturation-gate ${gateHolding ? 'gate-is-holding' : ''}`}>
-              <span>Pool saturation</span>
+              <span>Saturation</span>
               <strong>{frame.saturation.toFixed(2)}×</strong>
               <div aria-hidden="true"><i /><i /><i /></div>
             </div>
           </div>
         </section>
 
-        <Connector label={gateHolding ? 'held' : 'dispatch'} holding={gateHolding} />
+        <Connector label={gateHolding ? 'held' : 'dispatch'} holding={gateHolding} visibleLabel={false} />
 
         <section className="vllm-component" aria-labelledby="runtime-title">
           <header className="component-titlebar">
             <div>
-              <span className="component-kicker">03 · model server</span>
               <h3 id="runtime-title">vLLM{pods.length > 1 ? ` · ${formatCount(pods.length)} pods` : ''}</h3>
             </div>
-            <div className="component-state runtime-state"><i /> Sample {formatTime(frame.time)}</div>
           </header>
 
           <div className="policy-boundary"><span>llm-d priority ends here</span></div>
@@ -221,11 +213,8 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
 
             <section className="continuous-batch" aria-labelledby="batch-title">
               <header>
-                <div>
-                  <span title="vllm:num_requests_running">Continuous scheduler</span>
-                  <h4 id="batch-title">Continuous batch</h4>
-                </div>
-                <strong>{formatCount(running)}{maxSequences ? ` / ${formatCount(maxSequences)}` : ''} running</strong>
+                <h4 id="batch-title">Continuous batch</h4>
+                <strong>{formatCount(running)}{maxSequences ? ` / ${formatCount(maxSequences)}` : ''}</strong>
               </header>
 
               {pods.length > 0 && batchSlots && configuredSlots ? (
@@ -239,17 +228,10 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
                       <i key={index} className={index < visibleRunning ? 'active' : ''} />
                     ))}
                   </div>
-                  <div className="batch-capacity-key">
-                    <span><i /> Running <strong>{formatCount(running)}</strong></span>
-                    <small>{formatCount(configuredSlots)} configured slots</small>
-                  </div>
                   <section className="vllm-waiting-queue" aria-labelledby="waiting-queue-title">
                     <header>
-                      <div>
-                        <span title="vllm:num_requests_waiting">Local queue</span>
-                        <h5 id="waiting-queue-title">Waiting</h5>
-                      </div>
-                      <strong>{formatCount(waiting)} waiting</strong>
+                      <h5 id="waiting-queue-title">Waiting</h5>
+                      <strong>{formatCount(waiting)} / {formatCount(waitingPeak)} peak</strong>
                     </header>
                     {waitingSlots ? (
                       <>
@@ -261,10 +243,6 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
                           {Array.from({ length: waitingSlots }, (_, index) => (
                             <i key={index} className={index < visibleWaiting ? 'active' : ''} />
                           ))}
-                        </div>
-                        <div className="waiting-capacity-key">
-                          <span><i /> Waiting <strong>{formatCount(waiting)}</strong></span>
-                          <small>Run peak {formatCount(waitingPeak)} · observed</small>
                         </div>
                       </>
                     ) : waitingPeak > MAX_RENDERED_SLOTS ? (
@@ -304,10 +282,6 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
               </div>
             </section>
           </div>
-
-          <footer className="runtime-footer">
-            <span className="mechanics-warning">Older runs do not contain request IDs per engine step.</span>
-          </footer>
         </section>
       </div>
     </section>
