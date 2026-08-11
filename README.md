@@ -69,6 +69,37 @@ npm run dev
 
 The command writes `public/data/run.json`. Git ignores generated replay data.
 
+## Replay A Published Benchmark Package
+
+Public benchmark packages keep request, traffic, and system metrics in long-form CSV files. Load one accepted run directly from its package:
+
+```bash
+npm run ingest:package -- \
+  --package-dir /absolute/path/to/benchmark-package \
+  --run-name "exact run name from summary.csv"
+npm run dev
+```
+
+The package ingester supports the stable upstream packages that contain `request-results.csv`, `traffic-samples.csv`, and `system-metrics.csv`. It also supports the two-model batch-eviction package. Summary-only packages remain static evidence because they do not contain a time series to replay.
+
+Published packages are available in the [flow-control benchmark repository](https://github.com/alexagriffith/flow-control-benchmarks/tree/main/benchmark-data). The visualizer loads measured requests and time-series metrics; saved model responses are evidence and are not used as replay input.
+
+## Record A Replay
+
+After loading a package and starting the local server, capture a fixed evidence window:
+
+```bash
+npm run record -- \
+  --url http://127.0.0.1:5173/ \
+  --start-time 90 \
+  --poster-time 120 \
+  --speed 2 \
+  --seconds 30 \
+  --output /absolute/path/replay.mp4
+```
+
+The command records an 880×626 MP4 and a PNG poster from the same loaded run. Install the browser once with `npx playwright install chromium`; recording also requires `ffmpeg` on `PATH`.
+
 Choose another output path when you do not want to load the artifact in the UI:
 
 ```bash

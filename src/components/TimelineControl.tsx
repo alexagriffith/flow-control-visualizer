@@ -40,26 +40,26 @@ export function TimelineControl({
   const cursorX = duration > 0 ? (cursor / duration) * width : 0
   const currentFrame = frames[frameIndexAtTime(frames, cursor)]
   const incomingRps = (currentFrame?.arrivals ?? 0) / interval
+  const playbackTime = (seconds: number) => formatTime(Math.round(seconds)).replace(/\.0$/, '')
 
   return (
     <section className="timeline-shell" aria-label="Run playback">
       <div className="timeline-controls">
-        <span className="timeline-title">Requests/sec</span>
         <button
           className="play-button"
           type="button"
           aria-label={playing ? 'Pause replay' : 'Play replay'}
+          title={playing ? 'Pause replay' : 'Play replay'}
           onClick={() => onPlayingChange(!playing)}
         >
           <span aria-hidden="true">{playing ? 'Ⅱ' : '▶'}</span>
-          {playing ? 'Pause' : 'Play'}
         </button>
         <div className="time-readout">
-          <strong>{formatTime(cursor)}</strong>
-          <span>/ {formatTime(duration)}</span>
+          <strong>{playbackTime(cursor)}</strong>
+          <span>/ {playbackTime(duration)}</span>
         </div>
         <label className="speed-control">
-          <span>Playback</span>
+          <span className="sr-only">Playback speed</span>
           <select name="playback-speed" autoComplete="off" value={speed} onChange={(event) => onSpeedChange(Number(event.target.value))}>
             <option value={0.5}>0.5×</option>
             <option value={1}>1×</option>
@@ -87,8 +87,8 @@ export function TimelineControl({
         />
       </div>
       <div className="timeline-legend" aria-hidden="true">
-        <span className="request-rate-now"><strong>{incomingRps.toFixed(1)}</strong> now</span>
-        <span><i className="legend-line arrivals" /> Incoming</span>
+        <span className="request-rate-now"><strong>{incomingRps.toFixed(1)}</strong> requests/s</span>
+        <span><i className="legend-line arrivals" /> Arrivals</span>
         <span><i className="legend-line completions" /> Completed</span>
       </div>
     </section>

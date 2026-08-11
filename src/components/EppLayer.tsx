@@ -9,19 +9,17 @@ type EppLayerProps = {
 
 export const EppLayer = memo(function EppLayer({ run, frame }: EppLayerProps) {
   const maximum = Math.max(1, run.summary.maxEppQueue)
-  const sortedQueues = [...frame.queues].sort(
+  const sortedQueues = (frame.queues.length > 0 ? frame.queues : run.tenants.map((tenant) => ({
+    id: tenant.id, priority: tenant.priority, size: 0, bytes: 0,
+  }))).sort(
     (left, right) => right.priority - left.priority || left.id.localeCompare(right.id),
   )
 
   return (
     <section className="layer epp-layer" aria-labelledby="epp-layer-title">
       <div className="signal-bridge" aria-hidden="true"><span /></div>
-      <div className="layer-index" aria-hidden="true">02</div>
       <header className="layer-header">
-        <div>
-          <p className="eyebrow">Policy decides who waits</p>
-          <h2 id="epp-layer-title">EPP admission queues</h2>
-        </div>
+        <h2 id="epp-layer-title">Endpoint Picker</h2>
         <div className="saturation-readout">
           <span>Pool saturation</span>
           <strong>{frame.saturation.toFixed(2)}×</strong>
@@ -49,7 +47,6 @@ export const EppLayer = memo(function EppLayer({ run, frame }: EppLayerProps) {
                 <div className="queue-grid-lines" aria-hidden="true" />
               </div>
               <div className="queue-meta">
-                <span>requests</span>
                 <span>{formatBytes(queue.bytes)}</span>
               </div>
             </article>

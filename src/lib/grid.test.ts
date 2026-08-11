@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { balancedGridColumns } from './grid'
+import { balancedCardColumns, balancedGridColumns } from './grid'
 
 describe('balancedGridColumns', () => {
   it.each([
@@ -17,5 +17,21 @@ describe('balancedGridColumns', () => {
   it('uses one complete row when the slot count is prime', () => {
     expect(balancedGridColumns(13)).toBe(13)
     expect(balancedGridColumns(73)).toBe(73)
+  })
+})
+
+describe('balancedCardColumns', () => {
+  it.each([
+    [1, 1],
+    [2, 2],
+    [3, 3],
+    [4, 2],
+    [5, 5],
+    [6, 2],
+    [8, 2],
+    [9, 3],
+  ])('places %i cards in complete rows of %i', (cards, columns) => {
+    expect(balancedCardColumns(cards)).toBe(columns)
+    expect(cards % columns).toBe(0)
   })
 })

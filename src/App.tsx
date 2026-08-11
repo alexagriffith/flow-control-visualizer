@@ -4,6 +4,7 @@ import { EppLayer } from './components/EppLayer'
 import { TimelineControl } from './components/TimelineControl'
 import { VllmLayer } from './components/VllmLayer'
 import { SystemFlowDiagram } from './components/SystemFlowDiagram'
+import { MetricLabel } from './components/MetricLabel'
 import { demoRun } from './demo-run'
 import { formatCount, humanizeIdentifier } from './lib/format'
 import { isRunData } from './lib/run-data'
@@ -235,6 +236,8 @@ export default function App() {
   const runName = humanizeIdentifier(run.metadata.runId)
   const scenarioName = humanizeIdentifier(run.metadata.scenario)
   const showScenario = !runName.toLocaleLowerCase().includes(scenarioName.toLocaleLowerCase())
+  const hasQueueMetrics = run.frames.some((candidate) => candidate.queues.length > 0)
+  const hasVllmMetrics = run.frames.some((candidate) => candidate.vllm.length > 0)
 
   return (
     <div className="app-shell">
@@ -289,11 +292,11 @@ export default function App() {
               <button type="button" aria-label="Close how to use" onClick={() => setShowHelp(false)}>×</button>
             </header>
             <ol>
-              <li><strong>Choose a run.</strong><span>The menu shows available replay artifacts.</span></li>
-              <li><strong>Play or scrub.</strong><span>The chart and components stay on the same moment.</span></li>
-              <li><strong>Read left to right.</strong><span>Traffic → Endpoint Picker → vLLM.</span></li>
+              <li><strong>Choose a run.</strong></li>
+              <li><strong>Play or scrub.</strong></li>
+              <li><strong>Follow the path.</strong><span>Traffic → Endpoint Picker → vLLM.</span></li>
             </ol>
-            <p>Solid values are recorded. Dashed elements explain mechanics.</p>
+            <p>Solid = recorded. Dashed = mechanism.</p>
           </section>
         </div>
       ) : null}
@@ -306,11 +309,20 @@ export default function App() {
             <h1>{runName}</h1>
             {showScenario ? <p className="hero-deck">{scenarioName}</p> : null}
           </div>
-          <dl className="run-summary">
-            <div><dt>Requests</dt><dd>{formatCount(run.summary.requestCount)}</dd></div>
-            <div><dt>EPP peak</dt><dd>{formatCount(run.summary.maxEppQueue)}</dd></div>
-            <div><dt>vLLM peak wait</dt><dd>{formatCount(run.summary.maxVllmWaiting)}</dd></div>
-          </dl>
+          <details className="run-summary">
+            <summary>
+              <span><MetricLabel description="Total request records captured for this run.">Requests</MetricLabel><strong>{formatCount(run.summary.requestCount)}</strong></span>
+              <span><MetricLabel description="Largest number of requests waiting in Endpoint Picker policy queues at one recorded sample.">Peak queued</MetricLabel><strong>{hasQueueMetrics ? formatCount(run.summary.maxEppQueue) : '—'}</strong></span>
+            </summary>
+            <dl className="run-summary-details">
+              <div><dt>Requests</dt><dd>{formatCount(run.summary.requestCount)}</dd></div>
+              <div><dt>Errors</dt><dd>{formatCount(run.summary.errorCount)}</dd></div>
+              <div><dt><MetricLabel description="Largest number of requests waiting in Endpoint Picker policy queues at one recorded sample.">Endpoint Picker peak queue</MetricLabel></dt><dd>{hasQueueMetrics ? formatCount(run.summary.maxEppQueue) : '—'}</dd></div>
+              <div><dt><MetricLabel description="Largest number of requests waiting inside vLLM at one recorded sample. This work had already passed flow control.">vLLM peak waiting</MetricLabel></dt><dd>{hasVllmMetrics ? formatCount(run.summary.maxVllmWaiting) : '—'}</dd></div>
+              <div><dt>vLLM peak running</dt><dd>{hasVllmMetrics ? formatCount(run.summary.maxVllmRunning) : '—'}</dd></div>
+              <div><dt>Peak saturation</dt><dd>{run.summary.maxSaturation.toFixed(2)}×</dd></div>
+            </dl>
+          </details>
         </section>
 
         <TimelineControl
@@ -333,10 +345,10 @@ export default function App() {
 
         <div className="view-switcher" role="group" aria-label="Visualization mode">
           <button type="button" aria-pressed={viewMode === 'diagram'} onClick={() => setViewMode('diagram')}>
-            Component flow
+            Flow
           </button>
           <button type="button" aria-pressed={viewMode === 'telemetry'} onClick={() => setViewMode('telemetry')}>
-            Telemetry
+            Metrics
           </button>
         </div>
 

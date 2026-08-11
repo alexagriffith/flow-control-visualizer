@@ -3,6 +3,7 @@ import { formatCount, formatPercent, humanizeIdentifier } from '../lib/format'
 import { balancedGridColumns } from '../lib/grid'
 import { MAX_RENDERED_SLOTS, renderableSlotCount } from '../lib/visual-limits'
 import type { RunData, TimelineFrame, VllmFrame } from '../types'
+import { MetricLabel } from './MetricLabel'
 
 type VllmLayerProps = {
   run: RunData
@@ -27,7 +28,7 @@ function PodCard({ pod, run, waitingPeak }: { pod: VllmFrame; run: RunData; wait
 
       <div className="batch-title-row">
         <h4>Continuous batch</h4>
-        <span>{formatCount(pod.running)}{maximum ? ` / ${formatCount(maximum)}` : ''} running</span>
+        <span>{formatCount(pod.running)}{maximum ? ` / ${formatCount(maximum)}` : ''}</span>
       </div>
 
       {renderedMaximum ? (
@@ -43,13 +44,9 @@ function PodCard({ pod, run, waitingPeak }: { pod: VllmFrame; run: RunData; wait
       ) : maximum ? (
         <div className="telemetry-config-needed">{formatCount(maximum)} slots · grid hidden above {formatCount(MAX_RENDERED_SLOTS)}</div>
       ) : <div className="telemetry-config-needed">Need config · max_num_seqs</div>}
-      <div className="sequence-caption">
-        <span>{maximum ? `${formatCount(maximum)} configured slots` : 'Configured limit not captured'}</span>
-      </div>
-
       <div className="batch-title-row waiting-title-row">
         <h4>Waiting</h4>
-        <span>{formatCount(pod.waiting)}</span>
+        <span>{formatCount(pod.waiting)}{waitingPeak > 0 ? ` / ${formatCount(waitingPeak)} peak` : ''}</span>
       </div>
       {renderedWaitingPeak ? (
         <div
@@ -64,30 +61,31 @@ function PodCard({ pod, run, waitingPeak }: { pod: VllmFrame; run: RunData; wait
       ) : waitingPeak > 0 ? (
         <div className="telemetry-config-needed">{formatCount(waitingPeak)} peak · grid hidden above {formatCount(MAX_RENDERED_SLOTS)}</div>
       ) : <div className="waiting-empty">No waiting recorded</div>}
-      {waitingPeak > 0 && (
-        <div className="sequence-caption"><span>Run peak {formatCount(waitingPeak)} · observed, not a limit</span></div>
-      )}
-
-      <div className="pod-metric-grid">
-        <div>
-          <span>KV cache</span>
-          <strong>{formatPercent(pod.kvCacheUsage)}</strong>
-          <div className="micro-bar"><i style={{ width: `${Math.min(100, pod.kvCacheUsage * 100)}%` }} /></div>
+      <details className="pod-metrics">
+        <summary>
+          <span>Model metrics</span>
+          <strong>KV {formatPercent(pod.kvCacheUsage)} · {formatCount(pod.preemptions)} preemptions</strong>
+        </summary>
+        <div className="pod-metric-grid">
+          <div>
+            <MetricLabel description="Share of vLLM key-value cache in use. High pressure can lead to preemption or swapping.">KV cache</MetricLabel>
+            <strong>{formatPercent(pod.kvCacheUsage)}</strong>
+            <div className="micro-bar"><i style={{ width: `${Math.min(100, pod.kvCacheUsage * 100)}%` }} /></div>
+          </div>
+          <div>
+            <MetricLabel description="Maximum tokens vLLM can schedule in one iteration. It controls prefill work, not total KV memory.">Token cap</MetricLabel>
+            <strong>{run.limits.maxBatchedTokens ? formatCount(run.limits.maxBatchedTokens) : '—'}</strong>
+          </div>
+          <div>
+            <MetricLabel description="Running requests paused by vLLM to free memory for other work. Repeated growth signals memory pressure.">Preemptions</MetricLabel>
+            <strong>{formatCount(pod.preemptions)}</strong>
+            <small>cumulative</small>
+          </div>
         </div>
-        <div>
-          <span>Iteration token ceiling</span>
-          <strong>{run.limits.maxBatchedTokens ? formatCount(run.limits.maxBatchedTokens) : 'Not captured'}</strong>
-          <small>{run.limits.maxBatchedTokens ? 'configured limit' : 'older run'}</small>
-        </div>
-        <div>
-          <span>Preemptions</span>
-          <strong>{formatCount(pod.preemptions)}</strong>
-          <small>cumulative</small>
-        </div>
-      </div>
+      </details>
       <div className="batch-boundary-note">
         <span aria-hidden="true">◎</span>
-        <p><strong>Exact members unavailable.</strong> This run recorded aggregate scheduler pressure, not per-iteration request events.</p>
+        <p>Request-level batch membership not captured.</p>
       </div>
     </article>
   )
@@ -107,13 +105,8 @@ export const VllmLayer = memo(function VllmLayer({ run, frame }: VllmLayerProps)
   return (
     <section className="layer vllm-layer" aria-labelledby="vllm-layer-title">
       <div className="signal-bridge" aria-hidden="true"><span /></div>
-      <div className="layer-index" aria-hidden="true">03</div>
       <header className="layer-header">
-        <h2 id="vllm-layer-title">vLLM pod pressure</h2>
-        <div className="layer-live-stats">
-          <span><strong>{formatCount(frame.vllm.reduce((total, pod) => total + pod.running, 0))}</strong> running</span>
-          <span><strong>{formatCount(frame.vllm.reduce((total, pod) => total + pod.waiting, 0))}</strong> waiting</span>
-        </div>
+        <h2 id="vllm-layer-title">vLLM</h2>
       </header>
       <div className="pod-grid">
         {frame.vllm.map((pod) => {
