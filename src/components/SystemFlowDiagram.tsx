@@ -4,6 +4,7 @@ import { balancedGridColumns } from '../lib/grid'
 import { MAX_RENDERED_SLOTS, renderableSlotCount } from '../lib/visual-limits'
 import { aggregateVllm } from '../lib/vllm'
 import type { QueueFrame, RunData, TimelineFrame } from '../types'
+import { MetricLabel } from './MetricLabel'
 
 type SystemFlowDiagramProps = {
   run: RunData
@@ -40,7 +41,6 @@ function PriorityBand({
   queues: QueueFrame[]
   run: RunData
 }) {
-  const queued = queues.reduce((total, queue) => total + queue.size, 0)
   return (
     <section
       className="priority-band"
@@ -48,11 +48,7 @@ function PriorityBand({
       aria-label={`${label ?? 'Priority'} ${priority}`}
     >
       <header>
-        <div>
-          <strong>P{priority}</strong>
-          {label ? <span>{label}</span> : null}
-        </div>
-        <b aria-label={`${queued} queued`}>{formatCount(queued)}</b>
+        <strong>P{priority}</strong>
       </header>
       <div
         className="fairness-queues"
@@ -80,10 +76,9 @@ function PriorityBand({
   )
 }
 
-function Connector({ label, holding, visibleLabel = true }: { label: string; holding?: boolean; visibleLabel?: boolean }) {
+function Connector({ label, holding }: { label: string; holding?: boolean }) {
   return (
     <div className={`component-connector ${holding ? 'connector-holding' : ''}`} aria-label={label}>
-      {visibleLabel ? <span>{label}</span> : null}
       <div className="connector-track" aria-hidden="true">
         <b>→</b>
       </div>
@@ -110,15 +105,13 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
   const waitingSlots = renderableSlotCount(waitingPeak)
   const visibleWaiting = Math.min(waiting, waitingSlots ?? 0)
   const waitingColumns = waitingSlots ? balancedGridColumns(waitingSlots) : 1
-  const queuesByTenant = new Map(frame.queues.map((queue) => [`${queue.priority}:${queue.id}`, queue]))
-  const queuesForPriority = (priority: number): QueueFrame[] => run.tenants
-    .filter((tenant) => tenant.priority === priority)
-    .map((tenant) => queuesByTenant.get(`${priority}:${tenant.id}`) ?? {
-      id: tenant.id,
-      priority,
-      size: 0,
-      bytes: 0,
-    })
+  const queuesForPriority = (priority: number): QueueFrame[] => {
+    const observed = frame.queues.filter((queue) => queue.priority === priority)
+    if (observed.length > 0) return observed
+    return run.tenants
+      .filter((tenant) => tenant.priority === priority)
+      .map((tenant) => ({ id: tenant.id, priority, size: 0, bytes: 0 }))
+  }
 
   return (
     <section className={`system-diagram ${playing ? 'is-playing' : ''}`} aria-labelledby="system-diagram-title">
@@ -135,21 +128,27 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
             className="request-streams"
             style={{ '--tenant-count': Math.max(1, run.tenants.length) } as CSSProperties}
           >
+            <div className="request-stream-columns" aria-hidden="true">
+              <span>Workload</span>
+              <span>In flight</span>
+            </div>
             {run.tenants.map((tenant) => {
               const current = frame.tenants.find((candidate) => candidate.id === tenant.id)
               const name = humanizeIdentifier(tenant.id)
               const inFlight = current?.actualInflight ?? 0
               return (
                 <div className="request-stream" key={tenant.id} style={{ '--flow-color': tenant.color } as CSSProperties}>
-                  <span title={name}>{compactFlowName(tenant.id)}</span>
-                  <strong aria-label={`${formatCount(inFlight)} in flight`}>{formatCount(inFlight)}</strong>
+                  <span className="request-stream-name" title={name}>{compactFlowName(tenant.id)}</span>
+                  <span className="request-stream-count" aria-label={`${formatCount(inFlight)} in flight`}>
+                    <strong>{formatCount(inFlight)}</strong>
+                  </span>
                 </div>
               )
             })}
           </div>
         </section>
 
-        <Connector label="priority + fairness" />
+        <Connector label="Requests enter the Endpoint Picker" />
 
         <section className="endpoint-picker-component" aria-labelledby="endpoint-picker-title">
           <header className="component-titlebar">
@@ -163,6 +162,11 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
           </header>
 
           <div className="priority-stack">
+            <div className="priority-stack-columns" aria-hidden="true">
+              <span>Priority</span>
+              <span>Queue</span>
+              <span>Queued</span>
+            </div>
             {priorities.map((priority) => (
               <PriorityBand
                 key={priority}
@@ -178,9 +182,6 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
           </div>
 
           <div className="epp-decision-stage">
-            <strong className="priority-order" aria-label="Priority order">
-              {priorities.map((priority) => `P${priority}`).join(' → ')}
-            </strong>
             <div className={`saturation-gate ${gateHolding ? 'gate-is-holding' : ''}`}>
               <span>Saturation</span>
               <strong>{frame.saturation.toFixed(2)}×</strong>
@@ -189,32 +190,23 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
           </div>
         </section>
 
-        <Connector label={gateHolding ? 'held' : 'dispatch'} holding={gateHolding} visibleLabel={false} />
+        <Connector label={gateHolding ? 'Requests held by flow control' : 'Requests dispatched to vLLM'} holding={gateHolding} />
 
         <section className="vllm-component" aria-labelledby="runtime-title">
           <header className="component-titlebar">
             <div>
-              <h3 id="runtime-title">vLLM{pods.length > 1 ? ` · ${formatCount(pods.length)} pods` : ''}</h3>
+              <h3 id="runtime-title">
+                <MetricLabel description="llm-d applies priority and fairness before dispatch. vLLM schedules requests after they are admitted.">vLLM</MetricLabel>
+                {pods.length > 1 ? ` · ${formatCount(pods.length)} pods` : ''}
+              </h3>
             </div>
           </header>
 
-          <div className="policy-boundary"><span>llm-d priority ends here</span></div>
-
           <div className="runtime-pipeline">
-            <div className="scheduler-step">
-              <div className="scheduler-rotor" aria-hidden="true"><i /></div>
-              <span>Scheduler</span>
-              {run.runtime.schedulerPolicy ? (
-                <strong>{run.runtime.schedulerPolicy.toUpperCase()}</strong>
-              ) : (
-                <strong className="metric-needed"><i aria-hidden="true">!</i> Need metrics</strong>
-              )}
-            </div>
-
             <section className="continuous-batch" aria-labelledby="batch-title">
               <header>
                 <h4 id="batch-title">Continuous batch</h4>
-                <strong>{formatCount(running)}{maxSequences ? ` / ${formatCount(maxSequences)}` : ''}</strong>
+                <span className="running-count"><small>Running</small><strong>{formatCount(running)}{maxSequences ? ` / ${formatCount(maxSequences)}` : ''}</strong></span>
               </header>
 
               {pods.length > 0 && batchSlots && configuredSlots ? (
@@ -252,9 +244,8 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
                     )}
                   </section>
                   <div className="batch-facts">
-                    <span>{pods.length > 1 ? 'Peak KV' : 'KV'} <strong>{formatPercent(peakKvCacheUsage)}</strong></span>
-                    <span>Preemptions <strong>{formatCount(preemptions)}</strong></span>
-                    {run.limits.maxBatchedTokens ? <span>Token cap <strong>{formatCount(run.limits.maxBatchedTokens)}</strong></span> : null}
+                    <span><MetricLabel description="Share of vLLM key-value cache in use. High pressure can lead to preemption or swapping.">{pods.length > 1 ? 'Peak KV cache' : 'KV cache'}</MetricLabel> <strong>{formatPercent(peakKvCacheUsage)}</strong></span>
+                    <span><MetricLabel description="Running requests paused by vLLM to free memory for other work.">Preemptions</MetricLabel> <strong>{formatCount(preemptions)}</strong></span>
                   </div>
                 </>
               ) : pods.length === 0 ? (
@@ -274,13 +265,16 @@ export const SystemFlowDiagram = memo(function SystemFlowDiagram({ run, frame, p
                 </div>
               )}
 
-              <div className="batch-rebuild-loop">
-                <small>Mechanics, not measured membership</small>
-                <span>decode</span><b>→</b>
-                <span>prefill</span><b>→</b>
-                <span>rebuild</span>
-              </div>
             </section>
+
+            <details className="runtime-config">
+              <summary>Configuration</summary>
+              <dl>
+                <div><dt>Scheduler</dt><dd>{run.runtime.schedulerPolicy?.toLowerCase() === 'fcfs' ? 'First come, first served' : run.runtime.schedulerPolicy ? humanizeIdentifier(run.runtime.schedulerPolicy) : '—'}</dd></div>
+                <div><dt>Maximum running sequences</dt><dd>{maxSequences ? formatCount(maxSequences) : '—'}</dd></div>
+                <div><dt>Token budget per scheduling step</dt><dd>{run.limits.maxBatchedTokens ? `${formatCount(run.limits.maxBatchedTokens)} tokens` : '—'}</dd></div>
+              </dl>
+            </details>
           </div>
         </section>
       </div>

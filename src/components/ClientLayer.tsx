@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { formatCount, humanizeIdentifier } from '../lib/format'
+import { balancedCardColumns } from '../lib/grid'
 import type { RunData, TimelineFrame } from '../types'
 import { Sparkline } from './Sparkline'
 
@@ -10,13 +11,13 @@ type ClientLayerProps = {
 }
 
 export const ClientLayer = memo(function ClientLayer({ run, frame, frameIndex }: ClientLayerProps) {
+  const columns = balancedCardColumns(run.tenants.length)
   return (
     <section className="layer client-layer" aria-labelledby="client-layer-title">
-      <div className="layer-index" aria-hidden="true">01</div>
       <header className="layer-header">
         <h2 id="client-layer-title">Traffic</h2>
       </header>
-      <div className="tenant-grid">
+      <div className="tenant-grid" style={{ '--tenant-grid-columns': columns } as React.CSSProperties}>
         {run.tenants.map((tenant) => {
           const current = frame.tenants.find((sample) => sample.id === tenant.id)
           const values = run.frames.map(

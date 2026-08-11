@@ -9,20 +9,15 @@ type EppLayerProps = {
 
 export const EppLayer = memo(function EppLayer({ run, frame }: EppLayerProps) {
   const maximum = Math.max(1, run.summary.maxEppQueue)
-  const queuesByTenant = new Map(frame.queues.map((queue) => [`${queue.priority}:${queue.id}`, queue]))
-  const sortedQueues = run.tenants.map((tenant) => queuesByTenant.get(`${tenant.priority}:${tenant.id}`) ?? {
-    id: tenant.id,
-    priority: tenant.priority,
-    size: 0,
-    bytes: 0,
-  }).sort(
+  const sortedQueues = (frame.queues.length > 0 ? frame.queues : run.tenants.map((tenant) => ({
+    id: tenant.id, priority: tenant.priority, size: 0, bytes: 0,
+  }))).sort(
     (left, right) => right.priority - left.priority || left.id.localeCompare(right.id),
   )
 
   return (
     <section className="layer epp-layer" aria-labelledby="epp-layer-title">
       <div className="signal-bridge" aria-hidden="true"><span /></div>
-      <div className="layer-index" aria-hidden="true">02</div>
       <header className="layer-header">
         <h2 id="epp-layer-title">Endpoint Picker</h2>
         <div className="saturation-readout">
