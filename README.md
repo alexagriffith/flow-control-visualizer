@@ -6,7 +6,7 @@ are read-only; this app does not run benchmarks or change serving configuration.
 | View | Input | What it shows |
 |---|---|---|
 | Replay | Synthetic demo or compatible CSV replay artifacts | Client pressure, Endpoint Picker queues and vLLM telemetry at a recorded time |
-| Benchmark progress | Output from the [inference benchmark harness](https://github.com/rh-aiservices-bu/inference-benchmark-harness) | Tests, accepted repeats, saved state, config provenance and recorded request arrivals |
+| Benchmark progress | Native AIPerf exports, optionally inside [harness](https://github.com/rh-aiservices-bu/inference-benchmark-harness) output | Recorded traffic over time; harness state adds the full test plan, repeat progress and outcomes |
 
 These are different formats. Native AIPerf JSON/JSONL supports **progress**;
 it is not accepted by the legacy CSV replay ingester.
@@ -36,8 +36,8 @@ progress stays empty until configured. Keep the server local.
 
 ## Follow a benchmark
 
-Run the harness separately. Set its **output directory**, not an input config or
-the parent containing multiple campaigns:
+Set a **native AIPerf export directory** (containing `profile_export.jsonl`) or a
+**harness output directory** (containing `config.json` and `state.json`):
 
 ```sh
 FLOW_PROGRESS_RUN=/absolute/path/to/results npm run dev
@@ -47,10 +47,16 @@ Select **Benchmark progress**. It polls saved files every five seconds. Disconne
 retains the last readable snapshot with an error; stale checkpoints are labeled.
 This is not a runner heartbeat or live-ingress monitor. Missing traffic is not zero.
 
-The chart counts timestamped starts in the latest saved attempt, across all streams,
-including failed requests with timestamps. Config details expose a safe field
+Native exports work without a harness or matrix. They do not describe pending tests,
+repeat progress or a currently running process; the viewer does not invent these.
+Summary-only exports show no timeline. Default export filenames are required.
+
+The line chart shows recorded starts per second in fixed time bins, including failed
+requests with timestamps. With harness output it uses the latest attempt, all streams.
+Config details expose a safe field
 projection and the source file's hash/time—not headers, prompts or paths.
 Accepted repeats and performance outcomes are separate. There are no execution controls.
+The suggested report command is not a claim about a currently executing command.
 
 [Progress setup, interpretation and read limits](docs/progress.md).
 
@@ -60,6 +66,8 @@ Required: `client_samples.csv` and `metric_samples.csv`. Optional:
 `concurrency_samples.csv`, `traffic_samples.csv`, `summary.json`, `benchmark_config.json`.
 Use the schemas produced by the compatible benchmark packages below; arbitrary CSV
 columns or native AIPerf exports are not interchangeable with these files.
+Neither AIPerf's summary CSV nor arbitrary GuideLLM exports match this adapter.
+Native AIPerf server metrics are not yet mapped into the animated routing replay.
 
 ```sh
 npm run ingest -- --run-dir /absolute/path/to/run

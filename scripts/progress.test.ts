@@ -32,7 +32,7 @@ describe('saved harness progress', () => {
     expect(data.traffic.counts).toEqual([2, 1])
     expect(data.traffic.records).toBe(3)
     expect(data.traffic.partial).toBe(false)
-    expect(data.configSource.sha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(data.configSource?.sha256).toMatch(/^[0-9a-f]{64}$/)
     expect(JSON.stringify(data)).not.toMatch(/private|secret|prompts|do-not-expose/)
   })
   it('does not label an old running checkpoint live or a finished run stale', async () => {

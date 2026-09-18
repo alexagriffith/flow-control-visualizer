@@ -2,13 +2,18 @@ import { readBounded, object } from './progress-files'
 import type { ProgressData } from '../src/progress-types'
 
 export async function traffic(root: string, attempt: string | null, streams: string[]): Promise<ProgressData['traffic']> {
+  const files = attempt ? streams.map(stream => `${attempt}/${stream ? stream + '/' : ''}native/profile_export.jsonl`) : []
+  return trafficFromFiles(root, files, attempt)
+}
+
+export async function trafficFromFiles(root: string, files: string[], attempt: string | null): Promise<ProgressData['traffic']> {
   const empty = { attempt, start: null, secondsPerBin: 1, counts: [], records: 0, partial: false, unavailable: 'No request records yet.' }
-  if (!attempt) return empty
+  if (!files.length) return empty
   const starts: bigint[] = []
   let partial = false
-  for (const stream of streams) {
+  for (const file of files) {
     try {
-      const { text } = await readBounded(root, `${attempt}/${stream ? stream + '/' : ''}native/profile_export.jsonl`, 8 * 1024 * 1024)
+      const { text } = await readBounded(root, file, 8 * 1024 * 1024)
       const lines = text.split('\n')
       for (let index = 0; index < lines.length; index++) {
         const line = lines[index].trim()

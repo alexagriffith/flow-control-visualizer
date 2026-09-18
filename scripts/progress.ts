@@ -4,6 +4,7 @@ import type { Plugin } from 'vite'
 import type { ProgressData, ProgressRow } from '../src/progress-types'
 import { integer, label, object, projectedConfig, readBounded, type Json } from './progress-files'
 import { traffic } from './progress-traffic'
+import { readNativeProgress } from './progress-native'
 
 const states: Record<string, string> = {
   created: 'Ready', ready: 'Ready', checking: 'Checking', running: 'Running', complete: 'Finished',
@@ -21,6 +22,11 @@ function loadText(config: Json): string {
 }
 
 export async function readProgress(root: string, now = Date.now()): Promise<ProgressData> {
+  const entries = await readdir(root, { withFileTypes: true })
+  if (entries.length > 5000) throw new Error('Run directory exceeds supported size')
+  const names = entries.map(e => e.name)
+  // A broken harness checkpoint must not silently become a native-only view.
+  if (!names.includes('config.json') && !names.includes('state.json')) return readNativeProgress(root, names, now)
   const [configFile, stateFile] = await Promise.all([readBounded(root, 'config.json'), readBounded(root, 'state.json')])
   const config = object(JSON.parse(configFile.text)), state = object(JSON.parse(stateFile.text))
   if (config.schema_version !== 1) throw new Error('Unsupported config version')
@@ -61,8 +67,6 @@ export async function readProgress(root: string, now = Date.now()): Promise<Prog
       outcome: outcome === 'goal_not_met' ? 'Goal not met' : outcome === 'request_errors' ? 'Request errors' : !goalCount ? 'No goals set' : accepted ? 'See saved results' : 'Not evaluated',
       config: Object.fromEntries(Object.entries(streams).map(([name, c]) => [label(name, 'Stream'), projectedConfig(object(c))])) }
   })
-  const entries = await readdir(root, { withFileTypes: true })
-  if (entries.length > 5000) throw new Error('Run directory exceeds supported size')
   const attempts = entries.filter(e => e.isDirectory() && attemptPattern.test(e.name)).map(e => e.name)
   attempts.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
   const latest = attempts.at(-1) ?? null
@@ -74,7 +78,8 @@ export async function readProgress(root: string, now = Date.now()): Promise<Prog
   const action = statusKey === 'complete' ? 'Review results; accepted evidence does not mean goals were met.'
     : active ? 'Reading saved checkpoints. Process health is not observed.'
     : 'Inspect the runner’s saved report and confirm server drain before resuming in the CLI.'
-  return { configured: true, name: label(config.name, 'Benchmark sweep'), status: states[statusKey],
+  return { configured: true, source: 'harness', currentRow: index < points.length && statusKey !== 'complete' ? index + 1 : null,
+    name: label(config.name, 'Benchmark sweep'), status: states[statusKey],
     savedAt: stateFile.modifiedAt, readAt: new Date(now).toISOString(), stale, rows, action,
     configSource: { file: 'config.json', sha256: createHash('sha256').update(configFile.text).digest('hex'), modifiedAt: configFile.modifiedAt },
     traffic: await traffic(root, latest, streamNames) }
@@ -99,7 +104,7 @@ export function progressPlugin(root: string): Plugin {
         response.end(JSON.stringify(await pending))
       } catch {
         response.statusCode = 422
-        response.end(JSON.stringify({ error: 'Cannot read progress. Check the run path, config/state format, read limits and file permissions. Symlinks are not supported.' }))
+        response.end(JSON.stringify({ error: 'Cannot read artifacts. Select a harness output directory or native AIPerf export directory. Check formats, read limits and permissions; symlinks are not supported.' }))
       }
     })
   } }

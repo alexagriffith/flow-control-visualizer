@@ -11,13 +11,15 @@ export type ProgressRow = {
 
 export type ProgressData = {
   configured: boolean
+  source: 'harness' | 'aiperf'
+  currentRow: number | null
   name: string
   status: string
   savedAt: string
   readAt: string
   stale: boolean
   rows: ProgressRow[]
-  configSource: { file: string; sha256: string; modifiedAt: string }
+  configSource: { file: string; sha256: string; modifiedAt: string } | null
   action: string
   traffic: {
     attempt: string | null
