@@ -1,199 +1,156 @@
 # Flow Control Flight Recorder
 
-Replay llm-d flow-control experiments as a synchronized system diagram and telemetry view.
+Replay recorded llm-d experiments or follow saved benchmark progress. Both views
+are read-only; this app does not run benchmarks or change serving configuration.
 
-The UI connects client pressure, Endpoint Picker (EPP) admission queues, and vLLM continuous
-batching at the same recorded moment. It shows measured data without inventing request routes or
-batch membership.
+| View | Input | What it shows |
+|---|---|---|
+| Replay | Synthetic demo or compatible CSV replay artifacts | Client pressure, Endpoint Picker queues and vLLM telemetry at a recorded time |
+| Benchmark progress | Output from the [inference benchmark harness](https://github.com/rh-aiservices-bu/inference-benchmark-harness) | Tests, accepted repeats, saved state, config provenance and recorded request arrivals |
 
-## Demo
+These are different formats. Native AIPerf JSON/JSONL supports **progress**;
+it is not accepted by the legacy CSV replay ingester.
 
-![Synthetic replay showing traffic, Endpoint Picker queues, and vLLM continuous-batch pressure](docs/images/flow-control-demo.gif)
+![Saved benchmark progress: tests, repeats, outcomes and request arrivals](docs/images/benchmark-progress.png)
 
-Ten seconds at 2× speed, generated from the built-in synthetic run. The animation contains no
-experiment data.
+Progress shown above uses a local AIPerf loopback fixture, not GPU performance data.
 
-## What It Shows
+![Replay of the labeled synthetic three-tier demonstration](docs/images/replay.png)
 
-- **Traffic:** request rate and in-flight concurrency for each configured tenant.
-- **Endpoint Picker:** priority bands, fairness queues, queue depth, bytes, saturation, and admission state.
-- **vLLM:** running and waiting requests, configured sequence slots, KV-cache pressure, token ceiling, and preemptions.
-- **Time:** one playhead keeps the graph, component diagram, and telemetry on the same sample.
+Replay shown above is synthetic; load recorded artifacts for measured values.
 
-![vLLM telemetry showing continuous-batch and waiting-request slot grids](docs/images/vllm-telemetry.jpg)
+## Start locally
 
-## Evidence Rules
+Use **Node.js 22.12+** and npm on macOS or Linux. No GPU, cluster credentials or
+Prometheus database is needed to view saved data.
 
-The replay distinguishes recorded state from explanatory mechanics.
-
-| Display | Source | Meaning |
-| --- | --- | --- |
-| Solid values and filled cells | Saved run metrics | Exact at the recorded sampling interval |
-| Dashed elements and scheduler motion | UI explanation | System mechanics, not measured request movement |
-| `Need metrics` or `Need config` | Missing artifact | The UI refuses to guess |
-
-The continuous-batch grid contains one cell per configured `max_num_seqs` slot. The waiting grid
-contains one cell per request at the observed run peak. vLLM does not expose a configured
-waiting-queue capacity, so the UI labels that peak as an observation, not a limit.
-
-## Quick Start
-
-```bash
-npm install
+```sh
+git clone https://github.com/alexagriffith/flow-control-visualizer.git
+cd flow-control-visualizer
+npm ci
 npm run dev
 ```
 
-Open the local URL and use the built-in synthetic replay. No experiment data is required.
+Open the printed localhost URL. Replay starts with the labeled synthetic demo;
+progress stays empty until configured. Keep the server local.
 
-## Replay One Run
+## Follow a benchmark
 
-A run directory must contain:
+Run the harness separately. Set its **output directory**, not an input config or
+the parent containing multiple campaigns:
 
-- `client_samples.csv`
-- `metric_samples.csv`
+```sh
+FLOW_PROGRESS_RUN=/absolute/path/to/results npm run dev
+```
 
-It may also contain `concurrency_samples.csv`, `traffic_samples.csv`, `summary.json`, and
-`benchmark_config.json`.
+Select **Benchmark progress**. It polls saved files every five seconds. Disconnection
+retains the last readable snapshot with an error; stale checkpoints are labeled.
+This is not a runner heartbeat or live-ingress monitor. Missing traffic is not zero.
 
-`traffic_samples.csv` is optional and is how open-loop runs expose offered load without guessing.
-When present, the ingester preserves target RPS, arrival process, issued/completed requests,
-outstanding requests, send delay, and safety-ceiling state by tenant. Request rows may also include
-optional dense fields such as `request_id`, `planned_arrival_s`, `prompt_tokens`,
-`completion_tokens`, and `tpot_s`; older runs without those fields remain valid and render as
-partial evidence.
+The chart counts timestamped starts in the latest saved attempt, across all streams,
+including failed requests with timestamps. Config details expose a safe field
+projection and the source file's hash/time—not headers, prompts or paths.
+Accepted repeats and performance outcomes are separate. There are no execution controls.
 
-```bash
+[Progress setup, interpretation and read limits](docs/progress.md).
+
+## Replay a CSV run
+
+Required: `client_samples.csv` and `metric_samples.csv`. Optional:
+`concurrency_samples.csv`, `traffic_samples.csv`, `summary.json`, `benchmark_config.json`.
+Use the schemas produced by the compatible benchmark packages below; arbitrary CSV
+columns or native AIPerf exports are not interchangeable with these files.
+
+```sh
 npm run ingest -- --run-dir /absolute/path/to/run
 npm run dev
 ```
 
-The command writes `public/data/run.json`. Git ignores generated replay data.
+This writes ignored `public/data/run.json`, loaded by replay on startup.
+Use `--output /absolute/path/run.json` to write elsewhere without replacing the UI's
+loaded run. Ingestion reads trusted local artifacts; review them before loading.
+Files in `public/` are served by Vite and included by the production build.
 
-## Replay A Published Benchmark Package
+Optional request fields include `request_id`, `planned_arrival_s`, `prompt_tokens`,
+`completion_tokens` and `tpot_s`. `traffic_samples.csv` preserves offered-load and
+arrival-process evidence; it is not inferred from completion throughput.
 
-Public benchmark packages keep request, traffic, and system metrics in long-form CSV files. Load one accepted run directly from its package:
+### Published packages
 
-```bash
+```sh
 npm run ingest:package -- \
   --package-dir /absolute/path/to/benchmark-package \
   --run-name "exact run name from summary.csv"
 npm run dev
 ```
 
-The package ingester supports the stable upstream packages that contain `request-results.csv`, `traffic-samples.csv`, and `system-metrics.csv`. It also supports the two-model batch-eviction package. Summary-only packages remain static evidence because they do not contain a time series to replay.
+Supports upstream packages with `request-results.csv`, `traffic-samples.csv` and
+`system-metrics.csv`, plus the two-model batch-eviction package. Summary-only packages
+cannot be replayed. [Available packages](https://github.com/alexagriffith/flow-control-benchmarks/tree/main/benchmark-data).
 
-Published packages are available in the [flow-control benchmark repository](https://github.com/alexagriffith/flow-control-benchmarks/tree/main/benchmark-data). The visualizer loads measured requests and time-series metrics; saved model responses are evidence and are not used as replay input.
+### Run library
 
-## Record A Replay
+Put this in ignored `.env.local`, then restart the dev server:
 
-After loading a package and starting the local server, capture a fixed evidence window:
-
-```bash
-npm run record -- \
-  --url http://127.0.0.1:5173/ \
-  --start-time 90 \
-  --poster-time 120 \
-  --speed 2 \
-  --seconds 30 \
-  --output /absolute/path/replay.mp4
-```
-
-The command records an 880×626 MP4 and a PNG poster from the same loaded run. Install the browser once with `npx playwright install chromium`; recording also requires `ffmpeg` on `PATH`.
-
-Choose another output path when you do not want to load the artifact in the UI:
-
-```bash
-npm run ingest -- \
-  --run-dir /absolute/path/to/run \
-  --output /tmp/run.json
-```
-
-## Browse a Run Library
-
-Add one or more artifact roots to an ignored `.env.local` file. Separate roots with `:` on macOS
-and Linux or `;` on Windows.
-
-```bash
+```text
 FLOW_RUN_ROOTS=/absolute/path/to/campaign-a:/absolute/path/to/campaign-b
 ```
 
-Restart the development server. The selector groups every directory that contains
-`client_samples.csv` and labels its replay coverage:
+The selector discovers compatible CSV runs. API IDs are opaque; labels and loaded
+replay data remain visible to anyone with access to the local server.
+Use trusted roots and do not expose the server to an untrusted network.
 
-- **Full replay:** client concurrency, EPP queues, and vLLM pressure.
-- **Queues + runtime:** EPP and vLLM data without client concurrency samples.
-- **Client/partial:** client timing plus any compatible older metrics.
+## Read the replay correctly
 
-The API exposes opaque run IDs. It never returns configured filesystem paths.
+- Solid values show saved samples; dashed elements and motion explain mechanics.
+- The default demo is synthetic, not a measured experiment.
+- Missing artifacts show `Need metrics` / `Need config`; motion cannot recover missing events.
+- Continuous-batch cells represent configured `max_num_seqs` slots. Waiting cells
+  show the observed peak, **not** an engine queue limit.
+- Exact routing and per-iteration batch membership require correlated traces that
+  these aggregate artifacts do not provide.
 
-The run library is local development tooling. Keep Vite bound to localhost when `FLOW_RUN_ROOTS`
-contains private artifacts; do not expose that development server to an untrusted network.
-
-## Configure a Run
-
-Tenant IDs, priorities, and objectives come from captured client data. Runtime limits and band
-display metadata come from `benchmark_config.json`:
+Runtime limits and band display metadata may be supplied in `benchmark_config.json`:
 
 ```json
 {
-  "vllm_runtime": {
-    "max_num_seqs": 128,
-    "max_num_batched_tokens": 8192,
-    "scheduler_policy": "fcfs"
-  },
-  "epp_runtime": {
-    "priority_bands": [
-      { "priority": 100, "label": "Premium", "color": "#2d5bff" },
-      { "priority": 0, "label": "Standard", "color": "#168f82" },
-      { "priority": -10, "label": "Batch", "color": "#d95b30" }
-    ]
-  }
+  "vllm_runtime": {"max_num_seqs": 128, "max_num_batched_tokens": 8192, "scheduler_policy": "fcfs"},
+  "epp_runtime": {"priority_bands": [{"priority": 100, "label": "Interactive", "color": "#2d5bff"}]}
 }
 ```
 
-The UI supports any number of tenants, bands, and vLLM metric sources. Card layouts follow a
-no-orphan rule: the last row expands symmetrically and never leaves a blank, ghost-like cell.
+These describe the captured run; they do not configure llm-d or vLLM.
 
-## Deterministic Playback
+## Record a replay
 
-Open the same evidence window with query parameters:
+Install Chromium with `npx playwright install chromium` and provide `ffmpeg` on PATH.
+Start the dev server with the intended replay loaded, then:
 
-```text
-?run=<catalog-id>&time=75&speed=1&autoplay=1
+```sh
+npm run record -- --url http://127.0.0.1:5173/ \
+  --start-time 90 --poster-time 120 --speed 2 --seconds 30 \
+  --output /absolute/path/replay.mp4
 ```
 
-Supported speeds are `0.5`, `1`, `2`, and `4`. Add `record=1` to lock the wide presentation layout
-and disable decorative component motion for screen capture.
+Outputs an 880×626 MP4 and PNG poster. Reproducible browser playback supports
+`?run=<catalog-id>&time=75&speed=1&autoplay=1`. Speeds: `0.5`, `1`, `2`, `4`.
+`record=1` fixes the wide replay layout and disables decorative motion.
 
-## Data Boundary
+## Verify and build
 
-Current artifacts support exact post-run playback at their sampling interval. A smoother display
-cannot recover events that were never recorded.
-
-Exact request waterfalls and exact vLLM iteration membership require:
-
-- a request or trace ID shared by client, router, and model server;
-- timestamped EPP enqueue, dequeue, and dispatch events;
-- router endpoint-selection events;
-- opt-in vLLM scheduler iteration events.
-
-Until those signals exist, the UI presents aggregate scheduler pressure and states the limitation.
-
-## Quality and Safety
-
-- TypeScript uses strict mode.
-- Run artifacts pass structural validation before rendering.
-- Visual slot counts are bounded to prevent malformed data from freezing the browser.
-- Configuration colors accept six-digit hex values only.
-- Keyboard focus stays inside the help dialog; reduced-motion preferences disable animation.
-- The repository contains a synthetic demo and screenshots only—no private run artifacts.
-
-```bash
-npm test       # Unit tests
-npm run build  # Type-check and production build
-npm audit      # Dependency vulnerability audit
+```sh
+npm test
+npm run build
+npm audit
 ```
 
-## License
+The production build supports static replay. **Progress and run-library APIs require
+`npm run dev`; they are unavailable with `npm run preview` or static hosting.**
+Before distributing `dist/`, remove private data from your build inputs: ignored
+files under `public/data/` are still copied into it. Never publish private artifacts.
+
+Tests cover parsing, bounded grids, progress state, sanitization, partial exports and
+unsafe files. Keyboard controls and reduced motion are supported. Screenshots and
+local fixture tests establish UI behavior, not model performance.
 
 [Apache License 2.0](LICENSE)

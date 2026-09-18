@@ -56,7 +56,7 @@ export default function App() {
   useEffect(() => {
     let active = true
     const staticRun = fetch('/data/run.json').then(async (response) =>
-      response.ok ? response.json() as Promise<unknown> : null,
+      response.ok && response.headers.get('content-type')?.includes('application/json') ? response.json() as Promise<unknown> : null,
     )
     const runCatalog = fetch('/api/runs').then(async (response) =>
       response.ok ? response.json() as Promise<unknown> : [],
@@ -73,6 +73,8 @@ export default function App() {
         setRun(normalized)
         setSource('loaded')
         setCursor(peakQueueTime(normalized))
+      } else if (staticResult.status === 'rejected' || (staticResult.status === 'fulfilled' && staticResult.value !== null)) {
+        setRunError('Saved replay is malformed or unsupported. Showing the synthetic demo instead.')
       }
       if (catalogResult.status === 'fulfilled' && Array.isArray(catalogResult.value)) {
         setCatalog(catalogResult.value as RunCatalogEntry[])

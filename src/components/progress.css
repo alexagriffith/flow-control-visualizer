@@ -1,0 +1,49 @@
+.workspace-nav { width: min(1480px, calc(100% - 40px)); margin: 22px auto 0; display: flex; gap: 24px; }
+.workspace-nav a { color: var(--muted); padding: 10px 0; text-decoration: none; border-bottom: 3px solid transparent; }
+.workspace-nav a[aria-current="page"] { color: var(--ink); border-color: var(--teal); font-weight: 600; }
+.recording-mode .workspace-nav { display: none; }
+.progress-page { max-width: 1120px; margin: 26px auto; padding: 0 24px 30px; }
+.progress-heading, .progress-panel > header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.progress-heading h1 { font-size: clamp(24px, 4vw, 34px); margin: 0 0 12px; }
+.progress-heading > span { font-weight: 600; }
+.progress-meta { color: #52636f; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; margin-bottom: 22px; }
+.progress-panel { border: 1px solid var(--line); background: var(--paper); padding: 22px; margin: 16px 0; border-radius: 6px; }
+.progress-panel h2 { font-size: 19px; margin: 0 0 16px; }
+.progress-panel > header > span { font-size: 14px; }
+.progress-table-scroll { overflow-x: auto; }
+.progress-panel table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.progress-panel th, .progress-panel td { text-align: left; padding: 13px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.progress-panel thead { color: #52636f; font-size: 12px; }
+.progress-panel th:first-child, .progress-panel td:first-child { padding-left: 0; }
+.progress-panel small { display: block; font-size: 12px; color: #52636f; font-weight: 400; margin-top: 5px; }
+.progress-panel button { background: transparent; color: #086c62; border: 1px solid var(--line); padding: 8px 12px; border-radius: 4px; cursor: pointer; white-space: nowrap; min-height: 40px; }
+.progress-note { font-size: 12px; color: #52636f; margin: 12px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.progress-action { font-size: 14px; color: #52636f; }
+.progress-alert { border-left: 3px solid #b96112; padding: 10px 14px; background: #fff4e7; font-size: 14px; line-height: 1.5; }
+.progress-config { max-width: 900px; }
+.progress-config p { font-size: 12px; overflow-wrap: anywhere; }
+.progress-page pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 var(--mono); background: #edf2f4; padding: 14px; }
+.progress-chart { display: block; height: 150px; width: 100%; border-bottom: 1px solid var(--line); }
+.progress-chart rect { fill: #168f82; }
+.progress-chart-label { display: flex; justify-content: space-between; font-size: 12px; margin: 8px 0; color: #52636f; }
+.progress-panel details { font-size: 12px; margin-top: 12px; }
+.progress-panel summary { cursor: pointer; min-height: 28px; }
+.progress-panel summary:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .progress-page { padding: 0 14px 24px; margin-top: 20px; }
+  .progress-panel { padding: 14px; }
+  .progress-heading, .progress-panel > header { flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+  .progress-heading h1 { width: 100%; margin-bottom: 0; }
+  .progress-panel h2 { margin-bottom: 6px; }
+  .progress-table-scroll { overflow: visible; }
+  .progress-panel table, .progress-panel tbody, .progress-panel tr, .progress-panel td, .progress-panel th { display: block; width: 100%; }
+  .progress-panel thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .progress-test-row { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .progress-panel th, .progress-panel td { padding: 6px 0; border: 0; box-sizing: border-box; }
+  .progress-test-row td { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; align-items: baseline; overflow-wrap: anywhere; }
+  .progress-test-row td::before { content: attr(data-label); color: #52636f; font-size: 12px; }
+  .progress-test-row td:last-child { align-items: center; }
+  .progress-test-row button { justify-self: start; }
+  .progress-panel button { min-height: 44px; }
+  .progress-config { max-width: 100%; }
+}
