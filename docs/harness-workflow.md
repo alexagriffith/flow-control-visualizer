@@ -1,8 +1,14 @@
 # From harness inputs to the test plan
 
-Based on the [Red Hat AI Services harness example](https://github.com/rh-aiservices-bu/inference-benchmark-harness/blob/fd15767/examples/matrix.json),
-checked against `bench/matrix.py` and `Makefile` at `fd15767`.
+Based on the [Red Hat AI Services harness example](https://github.com/rh-aiservices-bu/inference-benchmark-harness/blob/74b4aed5f2b95a0bf3597a30e4222bb23a3e830e/examples/matrix.json),
+checked against `bench/matrix.py` and `Makefile` at `74b4aed` (September 18, 2026).
 These are demonstration budgets, not calibrated serving settings.
+
+For a first run, follow the harness [configure → verify → smoke → benchmark instructions](https://github.com/rh-aiservices-bu/inference-benchmark-harness/blob/74b4aed5f2b95a0bf3597a30e4222bb23a3e830e/README.md#install-and-configure).
+`make configure` creates `benchmark.local.json`; default outputs are `results/smoke`
+and `results/benchmark`. A matrix is optional, requires explicit `MATRIX`, and defaults
+to `results/matrix`. The four-row example below is the mixed-workload path, not a first-run requirement.
+See the [configuration reference](https://github.com/rh-aiservices-bu/inference-benchmark-harness/blob/74b4aed5f2b95a0bf3597a30e4222bb23a3e830e/docs/configuration.md) for all fields and defaults.
 
 ## Inputs
 
