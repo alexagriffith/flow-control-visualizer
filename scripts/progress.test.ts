@@ -59,6 +59,14 @@ describe('saved harness progress', () => {
     const data = await readProgress(root)
     expect(data.traffic.counts).toEqual([]); expect(data.traffic.unavailable).toContain('unavailable')
   })
+  it('keeps a valid plan when stray attempt directories do not match it', async () => {
+    const root = await fixture()
+    await mkdir(join(root, 'row-009-repeat-01-attempt-001'))
+    const data = await readProgress(root)
+    expect(data.rows).toHaveLength(1)
+    expect(data.traffic.attempt).toBe(attempt)
+    expect(data.traffic.partial).toBe(true)
+  })
   it('refuses symlinked config files and traversal', async () => {
     const root = await fixture(); await rm(join(root, 'config.json'))
     await symlink(join(root, 'state.json'), join(root, 'config.json'))
@@ -87,9 +95,10 @@ describe('saved harness progress', () => {
     const root = await fixture()
     await save(root, 'config.json', { schema_version: 1, ...stream, load: { concurrency: [1, 2], repeats: 3 } })
     await rm(join(root, attempt), { recursive: true })
-    await save(root, 'state.json', { schema_version: 1, status: 'ready', next_point: 0, completed: ['point-01-repeat-01-attempt-001'], point_results: {} })
+    await save(root, 'state.json', { schema_version: 1, status: 'ready', next_point: 0, completed: ['point-01-repeat-01-attempt-001'], point_results: { '1': 'goal_not_met' } })
     const data = await readProgress(root)
     expect(data.rows.map(r => r.accepted)).toEqual([1, 0]); expect(data.rows[1].status).toBe('Pending')
+    expect(data.rows[0].outcome).toBe('Goal not met'); expect(data.rows[1].outcome).toBe('No goals set')
   })
   it('whitelists only numeric tuning fields and known enums', () => {
     const value = projectedConfig({ ...stream, load: { rates: ['secret'], request: 'secret', arrival: 'secret' }, goals: { secret: 'secret' } })
@@ -97,8 +106,10 @@ describe('saved harness progress', () => {
   })
   it('rejects unknown state and duplicate accepted attempt entries', async () => {
     const root = await fixture()
-    await save(root, 'state.json', { kind: 'matrix', status: 'invented', next_row: 0, completed: [] })
-    await expect(readProgress(root)).rejects.toThrow('Unsupported')
+    for (const status of ['invented', '__proto__', 'constructor', 'toString']) {
+      await save(root, 'state.json', { kind: 'matrix', status, next_row: 0, completed: [] })
+      await expect(readProgress(root)).rejects.toThrow('Unsupported')
+    }
     await save(root, 'state.json', { kind: 'matrix', status: 'running', next_row: 0, completed: [attempt, attempt] })
     await expect(readProgress(root)).rejects.toThrow('Duplicate')
   })

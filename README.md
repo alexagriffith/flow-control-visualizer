@@ -59,6 +59,7 @@ Accepted repeats and performance outcomes are separate. There are no execution c
 The suggested report command is not a claim about a currently executing command.
 
 [Progress setup, interpretation and read limits](docs/progress.md).
+[Harness example: inputs, four planned tests, commands and outputs](docs/harness-workflow.md).
 
 ## Replay a CSV run
 

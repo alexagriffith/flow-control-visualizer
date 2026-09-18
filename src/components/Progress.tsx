@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import type { ProgressData } from '../progress-types'
+import { isProgressResponse } from '../lib/progress-response'
 import { TrafficChart } from './TrafficChart'
 import './progress.css'
 
@@ -22,7 +23,7 @@ export function Progress() {
         if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Progress API unavailable. Start the development server with npm run dev.')
         const value = await response.json()
         if (!response.ok) throw new Error(typeof value.error === 'string' ? value.error : 'Progress request failed.')
-        if (typeof value.configured !== 'boolean' || (value.configured && !Array.isArray(value.rows))) throw new Error('Unsupported progress response.')
+        if (!isProgressResponse(value)) throw new Error('Unsupported progress response.')
         if (!disposed) {
           setConfigured(value.configured)
           if (value.configured) setData(value as ProgressData)
@@ -42,17 +43,17 @@ export function Progress() {
   const accepted = data?.rows.reduce((n, r) => n + r.accepted, 0) ?? 0
   const total = data?.rows.reduce((n, r) => n + r.repeats, 0) ?? 0
   const current = data?.rows.find(row => row.number === data.currentRow)
-  return <main className="progress-page" id="progress-main">
-    <header className="progress-heading"><h1>{data?.name ?? 'Benchmark progress'}</h1><span>{data?.status ?? (error ? 'Unavailable' : !configured ? 'Not connected' : 'Loading…')}</span></header>
+  return <main className="progress-page" id="progress-main" tabIndex={-1}>
+    <header className="progress-heading"><h1>{data?.name ?? 'Benchmark progress'}</h1><span role="status">{data ? `${data.source === 'harness' ? 'Saved: ' : ''}${data.status}` : error ? 'Unavailable' : !configured ? 'Not connected' : 'Loading…'}</span></header>
     {error ? <p className="progress-alert" role="alert">{error} {data ? 'Showing the last readable snapshot.' : ''}</p> : null}
     {!configured ? <section className="progress-panel"><h2>Connect saved artifacts</h2><p>Select a native AIPerf export directory or a harness output directory.</p><pre>FLOW_PROGRESS_RUN=/absolute/path/to/results npm run dev</pre><p>Read-only. No cluster access or benchmark execution.</p></section> : null}
     {data ? <>
-      <div className="progress-meta" role="status">
+      <div className="progress-meta">
         <span>{error ? 'Disconnected' : `${data.source === 'harness' ? 'Harness checkpoint' : 'Native AIPerf'} · polling every 5s`}</span>
         <span>File updated {time(data.savedAt)}</span>
         <span>Last read {time(data.readAt)}</span>
       </div>
-      {data.stale ? <p className="progress-alert">No checkpoint update for over 30 seconds. The run may still be working; this is not a process heartbeat.</p> : null}
+      {data.stale ? <p className="progress-alert">Checkpoint unchanged for over 30s; process status unknown.</p> : null}
       <section className="progress-current" aria-label="Saved activity">
         <div><strong>{current ? `${current.number}. ${current.name}` : data.source === 'harness' ? `${accepted}/${total} repeats accepted` : 'No test plan supplied'}</strong>{current ? <span>{current.load} · {current.accepted}/{current.repeats} repeats accepted</span> : null}</div>
         <div><p>{data.action}</p>{data.source === 'harness' ? <details><summary>Read the full report</summary><p>Suggested command, in the harness checkout; replace the output path.</p><code>make report RUN=/absolute/path/to/results</code></details> : null}</div>
@@ -67,7 +68,7 @@ export function Progress() {
             {expanded === row.number && data.configSource ? <tr id={`config-${row.number}`}><td colSpan={5}><div className="progress-config"><strong>Safe config fields</strong><p>Source: {data.configSource.file}{data.rows.length > 1 ? ` · row ${row.number}` : ''} · modified {time(data.configSource.modifiedAt)}</p><p>Source SHA-256: <code>{data.configSource.sha256}</code></p><pre>{JSON.stringify(row.config, null, 2)}</pre><p>Endpoint, model identity, headers, prompts, paths and free-text notes are omitted. Current saved-file projection; acceptance is not revalidated. Not an executable config.</p></div></td></tr> : null}
           </Fragment>)}
         </tbody></table></div>
-        <p className="progress-note">Completed = all repeats accepted by the runner. Check outcomes separately; completion does not establish latency or fairness.</p>
+        <p className="progress-note">Completed = repeats accepted, not goals met.</p>
       </section>
       </> : <p className="progress-note">Native records show observed traffic only. Harness config/state adds planned tests, repeat progress and saved outcomes. CSV replay is a separate view.</p>}
     </> : null}

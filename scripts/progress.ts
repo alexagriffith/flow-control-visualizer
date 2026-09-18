@@ -18,7 +18,7 @@ function loadText(config: Json): string {
   const load = object(config.load)
   const value = Array.isArray(load.rates) ? load.rates[0] : Array.isArray(load.concurrency) ? load.concurrency[0] : undefined
   if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Missing load point')
-  return `${value}${load.rates ? '/s' : ' concurrent'}`
+  return `${value}${load.rates ? ' req/s' : ' concurrent'}`
 }
 
 export async function readProgress(root: string, now = Date.now()): Promise<ProgressData> {
@@ -36,7 +36,7 @@ export async function readProgress(root: string, now = Date.now()): Promise<Prog
   const completed = state.completed as string[]
   if (new Set(completed).size !== completed.length) throw new Error('Duplicate accepted attempts')
   const statusKey = String(state.status)
-  if (!(statusKey in states)) throw new Error('Unsupported runner state')
+  if (!Object.hasOwn(states, statusKey)) throw new Error('Unsupported runner state')
   const index = integer(matrix ? state.next_row : state.next_point, 1000)
   const load = matrix ? {} : object(config.load)
   const points = matrix ? config.rows : (load.rates ?? load.concurrency)
@@ -67,7 +67,12 @@ export async function readProgress(root: string, now = Date.now()): Promise<Prog
       outcome: outcome === 'goal_not_met' ? 'Goal not met' : outcome === 'request_errors' ? 'Request errors' : !goalCount ? 'No goals set' : accepted ? 'See saved results' : 'Not evaluated',
       config: Object.fromEntries(Object.entries(streams).map(([name, c]) => [label(name, 'Stream'), projectedConfig(object(c))])) }
   })
-  const attempts = entries.filter(e => e.isDirectory() && attemptPattern.test(e.name)).map(e => e.name)
+  const candidates = entries.filter(e => e.isDirectory() && attemptPattern.test(e.name)).map(e => e.name)
+  const attempts = candidates.filter(name => {
+    const match = name.match(matrix ? /^row-(\d+)-repeat-(\d+)-attempt-(\d+)$/ : /^point-(\d+)(?:-repeat-(\d+))?-attempt-(\d+)$/)
+    return match && Number(match[1]) >= 1 && Number(match[1]) <= points.length
+      && Number(match[2] ?? 1) >= 1 && Number(match[2] ?? 1) <= repeats && Number(match[3]) >= 1
+  })
   attempts.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
   const latest = attempts.at(-1) ?? null
   const rowNumber = latest ? Number(latest.match(/^(?:row|point)-(\d+)/)?.[1]) : 1
@@ -75,14 +80,16 @@ export async function readProgress(root: string, now = Date.now()): Promise<Prog
   if (streamNames.length > 8 || streamNames.some(s => s && !/^[a-z][a-z0-9_-]{0,47}$/.test(s))) throw new Error('Unsupported stream identity')
   const active = ['running', 'checking', 'ready', 'created'].includes(statusKey)
   const stale = active && now - Date.parse(stateFile.modifiedAt) > 30000
-  const action = statusKey === 'complete' ? 'Review results; accepted evidence does not mean goals were met.'
-    : active ? 'Reading saved checkpoints. Process health is not observed.'
+  const action = statusKey === 'complete' ? 'Repeats accepted; check measured outcomes.'
+    : active ? 'Saved checkpoint only; process status unknown.'
     : 'Inspect the runner’s saved report and confirm server drain before resuming in the CLI.'
+  const recordedTraffic = await traffic(root, latest, streamNames)
+  if (attempts.length !== candidates.length) recordedTraffic.partial = true
   return { configured: true, source: 'harness', currentRow: index < points.length && statusKey !== 'complete' ? index + 1 : null,
     name: label(config.name, 'Benchmark sweep'), status: states[statusKey],
     savedAt: stateFile.modifiedAt, readAt: new Date(now).toISOString(), stale, rows, action,
     configSource: { file: 'config.json', sha256: createHash('sha256').update(configFile.text).digest('hex'), modifiedAt: configFile.modifiedAt },
-    traffic: await traffic(root, latest, streamNames) }
+    traffic: recordedTraffic }
 }
 
 export function progressPlugin(root: string): Plugin {
