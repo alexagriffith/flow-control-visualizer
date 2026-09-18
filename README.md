@@ -11,7 +11,7 @@ are read-only; this app does not run benchmarks or change serving configuration.
 These are different formats. Native AIPerf JSON/JSONL supports **progress**;
 it is not accepted by the legacy CSV replay ingester.
 
-![Saved benchmark progress: tests, repeats, outcomes and request arrivals](docs/images/benchmark-progress.png)
+![Saved benchmark progress: tests, repeats, outcomes and request arrivals](docs/images/benchmark-progress-line-chart.png)
 
 Progress shown above uses a local AIPerf loopback fixture, not GPU performance data.
 
