@@ -53,6 +53,9 @@ export async function readProgress(root: string, now = Date.now()): Promise<Prog
     acceptedSlots.add(slot)
   }
   if (statusKey === 'complete' && (completed.length !== points.length * repeats || index !== points.length)) throw new Error('Incomplete finished checkpoint')
+  // After a goal/error stop, next_* points at an unrun row, not the cause of the stop.
+  const outcomeStop = ['goal_not_met', 'request_errors'].includes(statusKey)
+  const currentIndex = index < points.length && statusKey !== 'complete' && !outcomeStop ? index : null
   const rows: ProgressRow[] = points.map((value, i) => {
     const row = matrix ? object(value) : {}
     const streams = matrix ? object(row.streams) : { workload: { ...config, load: { ...load, [load.rates ? 'rates' : 'concurrency']: [value] } } }
@@ -63,7 +66,7 @@ export async function readProgress(root: string, now = Date.now()): Promise<Prog
     const goalCount = Object.values(streams).reduce<number>((n, c) => n + Object.keys(object(object(c).goals ?? {})).length, 0)
     return { number: i + 1, name: label(row.stage, `Test ${i + 1}`),
       load: Object.entries(streams).map(([name, c]) => `${label(name, 'Stream')} ${loadText(object(c))}`).join(' · '),
-      accepted, repeats, status: accepted === repeats ? 'Accepted' : i === index ? states[statusKey] : i < index ? 'Incomplete' : 'Pending',
+      accepted, repeats, status: accepted === repeats ? 'Accepted' : i === currentIndex ? states[statusKey] : i < index ? 'Incomplete' : 'Pending',
       outcome: outcome === 'goal_not_met' ? 'Goal not met' : outcome === 'request_errors' ? 'Request errors' : !goalCount ? 'No goals set' : accepted ? 'See saved results' : 'Not evaluated',
       config: Object.fromEntries(Object.entries(streams).map(([name, c]) => [label(name, 'Stream'), projectedConfig(object(c))])) }
   })
@@ -85,7 +88,7 @@ export async function readProgress(root: string, now = Date.now()): Promise<Prog
     : 'Inspect the runner’s saved report and confirm server drain before resuming in the CLI.'
   const recordedTraffic = await traffic(root, latest, streamNames)
   if (attempts.length !== candidates.length) recordedTraffic.partial = true
-  return { configured: true, source: 'harness', currentRow: index < points.length && statusKey !== 'complete' ? index + 1 : null,
+  return { configured: true, source: 'harness', currentRow: currentIndex === null ? null : currentIndex + 1,
     name: label(config.name, 'Benchmark sweep'), status: states[statusKey],
     savedAt: stateFile.modifiedAt, readAt: new Date(now).toISOString(), stale, rows, action,
     configSource: { file: 'config.json', sha256: createHash('sha256').update(configFile.text).digest('hex'), modifiedAt: configFile.modifiedAt },

@@ -56,6 +56,7 @@ requests with timestamps. With harness output it uses the latest attempt, all st
 Config details expose a safe field
 projection and the source file's hash/time—not headers, prompts or paths.
 Accepted repeats and performance outcomes are separate. There are no execution controls.
+If a goal miss or request error stops a run, later tests remain pending.
 The suggested report command is not a claim about a currently executing command.
 
 [Progress setup, interpretation and read limits](docs/progress.md).

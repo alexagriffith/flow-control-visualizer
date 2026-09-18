@@ -48,6 +48,28 @@ describe('saved harness progress', () => {
     await save(root, 'state.json', { kind: 'matrix', status: 'goal_not_met', next_row: 1, completed: [attempt], outcomes: { '0': 'goal_not_met' } })
     expect((await readProgress(root)).rows[0].outcome).toBe('Goal not met')
   })
+  it.each(['goal_not_met', 'request_errors'])('keeps the next matrix row pending after %s', async status => {
+    const root = await fixture()
+    await save(root, 'config.json', { schema_version: 1, repeats: 1,
+      rows: [1, 2].map(n => ({ stage: `test-${n}`, streams: { interactive: stream } })) })
+    await save(root, 'state.json', { kind: 'matrix', status, next_row: 1,
+      completed: [attempt], outcomes: { '0': status } })
+    const data = await readProgress(root)
+    expect(data.currentRow).toBeNull()
+    expect(data.rows[0].accepted).toBe(1)
+    expect(data.rows[0].outcome).toBe(status === 'goal_not_met' ? 'Goal not met' : 'Request errors')
+    expect(data.rows[1]).toMatchObject({ accepted: 0, status: 'Pending' })
+  })
+  it.each(['goal_not_met', 'request_errors'])('keeps the next single-workload point pending after %s', async status => {
+    const root = await fixture()
+    await save(root, 'config.json', { schema_version: 1, ...stream, load: { concurrency: [1, 2], repeats: 1 } })
+    await save(root, 'state.json', { schema_version: 1, status, next_point: 1,
+      completed: ['point-01-attempt-001'], point_results: { '1': status } })
+    const data = await readProgress(root)
+    expect(data.currentRow).toBeNull()
+    expect(data.rows[0].accepted).toBe(1)
+    expect(data.rows[1]).toMatchObject({ accepted: 0, status: 'Pending' })
+  })
   it('handles a partial final record without fabricating requests', async () => {
     const root = await fixture()
     await writeFile(join(root, attempt, 'interactive/native/profile_export.jsonl'), '{"metadata":{"request_start_ns":1789700000000000001}}\n{"metadata":')

@@ -53,7 +53,8 @@ Polling runs every five seconds after the previous response, with a four-second
 request timeout. Failed reads retain the last readable snapshot and show an error.
 An active checkpoint older than 30 seconds is marked stale; long work between
 checkpoints can be normal. A responding viewer does not prove the runner is alive.
-Finished snapshots remain saved results, never “live.”
+Finished snapshots remain saved results, never “live.” After a goal miss or request-error
+stop, unrun tests remain pending; the completed test retains its outcome.
 
 Config views exclude endpoints, headers, model identity, dataset paths, prompts,
 observer commands and free-text notes. They are **not executable configs**. Benchmark,
